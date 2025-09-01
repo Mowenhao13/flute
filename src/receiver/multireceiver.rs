@@ -9,21 +9,29 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::SystemTime;
 
+// 核心功能
+// 1.多会话管理​​：同时处理多个 FLUTE 传输会话(TSI)
+// 2.​​TSI 过滤​​：选择性接收特定 TSI 的数据包
+// 3.​会话生命周期管理​​：跟踪会话的打开、关闭和过期状态
+// 4.​数据包分发​​：将接收到的数据包路由到正确的会话接收器
+// 5.​监听器机制​​：提供会话状态变化的回调接口
+
 /// Receiver endpoint
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct ReceiverEndpoint {
     /// UDP endpoint
     pub endpoint: UDPEndpoint,
     /// TSI value
-    pub tsi: u64,
+    pub tsi: u64,   
 }
 
+// 监听器接口
 /// MultiReceiverListener
 pub trait MultiReceiverListener {
     /// Called when a FLUTE session is opened
-    fn on_session_open(&self, endpoint: &ReceiverEndpoint);
+    fn on_session_open(&self, endpoint: &ReceiverEndpoint); // 会话打开回调
     /// Called when a FLUTE session is being closed
-    fn on_session_closed(&self, endpoint: &ReceiverEndpoint);
+    fn on_session_closed(&self, endpoint: &ReceiverEndpoint); // 会话关闭回调
 }
 
 type MultiReceiverListenerBox = Box<dyn MultiReceiverListener>;
@@ -40,13 +48,13 @@ impl Debug for dyn MultiReceiverListener {
 ///
 #[derive(Debug)]
 pub struct MultiReceiver {
-    alc_receiver: HashMap<ReceiverEndpoint, Box<Receiver>>,
-    tsifilter: TSIFilter,
-    writer: Rc<dyn ObjectWriterBuilder>,
-    config: Option<Config>,
-    enable_tsi_filtering: bool,
-    listeners: HashMap<u64, MultiReceiverListenerBox>,
-    listeners_id: u64,
+    alc_receiver: HashMap<ReceiverEndpoint, Box<Receiver>>, // 会话接收器映射
+    tsifilter: TSIFilter,                  // TSI过滤器
+    writer: Rc<dyn ObjectWriterBuilder>,   // 对象写入器构建器
+    config: Option<Config>,                // 配置参数
+    enable_tsi_filtering: bool,            // 是否启用TSI过滤
+    listeners: HashMap<u64, MultiReceiverListenerBox>, // 监听器集合
+    listeners_id: u64,                     // 监听器ID计数器
 }
 
 impl MultiReceiver {
@@ -76,10 +84,16 @@ impl MultiReceiver {
     /// let endpoint = UDPEndpoint::new(None, "224.0.0.1".to_owned(), 3000);
     /// receiver.add_listen_tsi(endpoint, tsi)
     /// ```
+
+    // 初始化流程​​：
+    // 1.创建空的会话接收器映射表
+    // 2.初始化 TSI 过滤器
+    // 3.设置对象写入器和配置
+    // 4.准备监听器系统
     pub fn new(
-        writer: Rc<dyn ObjectWriterBuilder>,
-        config: Option<Config>,
-        enable_tsi_filtering: bool,
+        writer: Rc<dyn ObjectWriterBuilder>,  // 对象写入器构建器
+        config: Option<Config>,               // 可选配置
+        enable_tsi_filtering: bool           // 是否启用TSI过滤
     ) -> MultiReceiver {
         MultiReceiver {
             alc_receiver: HashMap::new(),
@@ -150,7 +164,8 @@ impl MultiReceiver {
     /// * `endpoint` - Add the TSI filter for this endpoint.
     ///
     /// * `tsi` - tsi The TSI value to filter.
-    ///
+
+    // 允许接收指定端点的特定 TSI 数据包
     pub fn add_listen_tsi(&mut self, endpoint: UDPEndpoint, tsi: u64) {
         if !self.enable_tsi_filtering {
             log::warn!("TSI filtering is disabled");
@@ -205,12 +220,18 @@ impl MultiReceiver {
     /// # Errors
     ///
     /// Returns an error if the packet is not valid or the receiver is in an error state.
-    ///
+
+    // 处理流程​​：
+    // 1.解析 ALC/LCT 数据包
+    // 2.检查 TSI 过滤条件
+    // 3.根据会话标识(端点+TSI)路由到正确的接收器
+    // 4.处理会话关闭标志
+    // 5.调用对应接收器的 push 方法
     pub fn push(
         &mut self,
-        endpoint: &UDPEndpoint,
-        pkt: &[u8],
-        now: std::time::SystemTime,
+        endpoint: &UDPEndpoint,  // 数据包来源端点
+        pkt: &[u8],              // 数据包内容
+        now: SystemTime          // 当前时间
     ) -> Result<()> {
         let alc = alc::parse_alc_pkt(pkt)?;
 

@@ -22,20 +22,20 @@ use std::time::SystemTime;
 pub struct Config {
     /// Max number of objects with error that the receiver is keeping track of.
     /// Packets received for an object in error state are discarded
-    pub max_objects_error: usize,
+    pub max_objects_error: usize, // 最大错误对象数
     /// The receiver expires if no data has been received before this timeout
     /// `None` the receiver never expires except if a close session packet is received
-    pub session_timeout: Option<Duration>,
+    pub session_timeout: Option<Duration>, // 会话超时时间
     /// Objects expire if no data has been received before this timeout
     /// `None` Objects never expires, not recommended as object that are not fully reconstructed might continue to consume memory for an finite amount of time.
-    pub object_timeout: Option<Duration>,
+    pub object_timeout: Option<Duration>, // 对象超时时间
     /// Maximum cache size that can be allocated to received an object. Default is 10MB.
-    pub object_max_cache_size: Option<usize>,
+    pub object_max_cache_size: Option<usize>, // 对象最大缓存大小
     /// When set to `true`, the receiver will only reconstruct each object once.
     /// If the same object is transferred again, it will be automatically discarded.
-    pub object_receive_once: bool,
+    pub object_receive_once: bool, // 是否只接收一次对象
     /// When set to `true`, the receiver will check the expiration date of the FDT.
-    pub enable_fdt_expiration_check: bool,
+    pub enable_fdt_expiration_check: bool, // 是否检查FDT过期
 }
 
 impl Default for Config {
@@ -61,18 +61,27 @@ pub struct ObjectCompletedMeta {
 ///
 #[derive(Debug)]
 pub struct Receiver {
-    tsi: u64,
-    objects: HashMap<u128, Box<ObjectReceiver>>,
-    objects_completed: BTreeMap<u128, ObjectCompletedMeta>,
-    objects_error: BTreeSet<u128>,
-    fdt_receivers: BTreeMap<u32, Box<FdtReceiver>>,
-    fdt_current: VecDeque<Box<FdtReceiver>>,
-    writer: Rc<dyn ObjectWriterBuilder>,
-    config: Config,
-    last_activity: Instant,
-    closed_is_imminent: bool,
-    endpoint: UDPEndpoint,
-    last_timestamp: Option<SystemTime>,
+    // 基本属性
+    tsi: u64,                            // 传输会话标识符
+    endpoint: UDPEndpoint,               // 网络端点
+    config: Config,                      // 配置参数
+
+    // 接收器管理
+    objects: HashMap<u128, Box<ObjectReceiver>>, // 活跃对象接收器
+    objects_completed: BTreeMap<u128, ObjectCompletedMeta>, // 已完成对象
+    objects_error: BTreeSet<u128>,       // 错误对象集合
+
+    // FDT管理
+    fdt_receivers: BTreeMap<u32, Box<FdtReceiver>>, // 所有FDT接收器
+    fdt_current: VecDeque<Box<FdtReceiver>>,      // 当前使用的FDT
+
+    // 写入相关
+    writer: Rc<dyn ObjectWriterBuilder>, // 对象写入器构建器
+
+    // 状态跟踪
+    last_activity: Instant,              // 最后活动时间
+    closed_is_imminent: bool,            // 会话是否即将关闭
+    last_timestamp: Option<SystemTime>,   // 最后时间戳
 }
 
 impl Receiver {
@@ -241,6 +250,12 @@ impl Receiver {
     ///
     /// Returns as error if the packet is not a valid
     ///
+    
+    // 处理流程​​：
+    // 1.解析数据包并验证TSI匹配
+    // 2.更新最后活动时间
+    // 3.根据TOI类型路由到FDT或对象处理
+    // 4.处理会话关闭标志
     pub fn push_data(&mut self, data: &[u8], now: std::time::SystemTime) -> Result<()> {
         self.last_timestamp = Some(now);
         let alc = alc::parse_alc_pkt(data)?;

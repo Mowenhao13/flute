@@ -17,20 +17,27 @@ use super::objectreceiverlogger::ObjectReceiverLogger;
 
 const MAX_PREALLOCATED_BLOCKS: usize = 2048;
 
+// 核心功能
+// 1.数据包处理​​：接收并解析 ALC/LCT 数据包
+// 2.块解码管理​​：使用 BlockDecoder解码源块
+// 3.数据写入​​：通过 BlockWriter将解码数据写入目标
+// 4.FDT 关联​​：与文件描述表(FDT)交互获取元数据
+// 5.状态管理​​：跟踪对象接收的完整生命周期
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum State {
-    Receiving,
-    Completed,
-    Interrupted,
-    Error,
+    Receiving,   // 接收中
+    Completed,   // 已完成
+    Interrupted, // 被中断
+    Error,       // 错误状态
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum ObjectWriterSessionState {
-    Idle,
-    Closed,
-    Opened,
-    Error,
+    Idle,    // 空闲
+    Closed,  // 已关闭
+    Opened,  // 已打开
+    Error,   // 错误
 }
 
 #[derive(Debug)]
@@ -41,34 +48,46 @@ struct ObjectWriterSession {
 
 #[derive(Debug)]
 pub struct ObjectReceiver {
+    // 基本属性
     pub state: State,
-    pub toi: u128,
-    pub tsi: u64,
-    pub endpoint: UDPEndpoint,
+    pub toi: u128,          // 传输对象ID
+    pub tsi: u64,           // 传输会话ID
+    pub endpoint: UDPEndpoint, // 网络端点
+
+    // 传输参数
     oti: Option<oti::Oti>,
-    cache: Vec<Box<alc::AlcPktCache>>,
+    pub transfer_length: Option<u64>,
+
+    // 数据管理
+    cache: Vec<Box<alc::AlcPktCache>>, // 数据包缓存
     cache_size: usize,
     max_size_allocated: usize,
-    blocks: VecDeque<BlockDecoder>,
+    blocks: VecDeque<BlockDecoder>, // 源块解码器队列
     blocks_offset: usize,
     blocks_variable_size: bool,
-    pub transfer_length: Option<u64>,
+    
     cenc: Option<lct::Cenc>,
     pub content_md5: Option<String>,
     enable_md5_check: bool,
     a_large: u64,
     a_small: u64,
     nb_a_large: u64,
+
+    // 写入相关
     object_writer_builder: Rc<dyn ObjectWriterBuilder>,
     object_writer: Option<ObjectWriterSession>,
     block_writer: Option<BlockWriter>,
-    pub fdt_instance_id: Option<u32>,
+
+    // FDT相关
+    pub fdt_instance_id: Option<u32>, // 关联的FDT实例ID
     last_activity: Instant,
-    pub content_location: Option<String>,
+    pub content_location: Option<String>, // 内容位置
     nb_allocated_blocks: usize,
     total_allocated_blocks_size: usize,
     #[cfg(feature = "opentelemetry")]
     logger: Option<ObjectReceiverLogger>,
+
+    // 其他元数据
     content_length: Option<usize>,
     content_type: Option<String>,
     pub cache_control: Option<ObjectCacheControl>,
@@ -77,7 +96,14 @@ pub struct ObjectReceiver {
     pub e_tag: Option<String>,
 }
 
+
 impl ObjectReceiver {
+
+    // 初始化步骤​​：
+    // 1.设置基本传输标识(TSI, TOI)
+    // 2.初始化空缓存和块队列
+    // 3.准备对象写入器构建器
+    // 4.设置初始状态为 Receiving
     pub fn new(
         endpoint: &UDPEndpoint,
         tsi: u64,
@@ -141,6 +167,15 @@ impl ObjectReceiver {
         self.blocks_offset + self.blocks.len()
     }
 
+    // ​​处理流程​​：
+    // 1.更新最后活动时间
+    // 2.从数据包提取 FDT 关联信息
+    // 3.设置内容编码(CENC)
+    // 4.设置对象传输信息(OTI)
+    // 5.初始化块分区
+    // 6.初始化对象写入器
+    // 7.处理缓存中的数据包
+    // 8.将数据包推送到对应块解码器
     pub fn push(&mut self, pkt: &alc::AlcPkt, now: std::time::SystemTime) {
         self.last_timestamp = now;
         if self.state != State::Receiving {
@@ -176,6 +211,13 @@ impl ObjectReceiver {
         Ok(())
     }
 
+    // 处理流程​​：
+    // 1.解析数据包的有效载荷ID
+    // 2.检查块边界条件
+    // 3.按需扩展块队列
+    // 4.初始化块解码器
+    // 5.推送数据到对应块解码器
+    // 6.检查块是否完成解码
     fn push_to_block2(&mut self, pkt: &alc::AlcPkt, now: std::time::SystemTime) -> Result<()> {
         debug_assert!(self.oti.is_some());
         debug_assert!(self.transfer_length.is_some());
@@ -404,7 +446,7 @@ impl ObjectReceiver {
         }
         usize::MAX
     }
-
+    // 当获取足够元数据(FDT关联、OTI等)后，创建对象写入器&块写入器
     fn init_object_writer(&mut self, now: SystemTime) {
         if self.object_writer.is_some() {
             return;
@@ -466,6 +508,12 @@ impl ObjectReceiver {
         object_writer.state = ObjectWriterSessionState::Opened;
     }
 
+    // 处理流程​​：
+    // 1.检查写入器状态
+    // 2.遍历已完成解码的块
+    // 3.通过 BlockWriter写入数据
+    // 4.更新块管理状态
+    // 5.检查对象是否完成接收
     fn write_blocks(&mut self, sbn_start: u32, now: std::time::SystemTime) -> Result<()> {
         if self.object_writer.is_none() {
             return Ok(());
