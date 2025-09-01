@@ -1,0 +1,142 @@
+-----This is a test file for FLUTE transmission------------
+
+ERROR: Invalid requirement: '#': Expected package name at the start of dependency specifier
+    #
+    ^
+░▒▓ ~/flute-main  pip install .                                       1 ✘  flute_py    10:36:35 下午 ▓▒░
+Processing /home/halllo/flute-main
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+Building wheels for collected packages: flute-alc
+  Building wheel for flute-alc (pyproject.toml) ... done
+  Created wheel for flute-alc: filename=flute_alc-1.10.3-cp313-cp313-linux_x86_64.whl size=1158617 sha256=d7ec803718399b92d50e726717124c314696842f27d9f970316fb9d2d027064a
+  Stored in directory: /home/halllo/.cache/pip/wheels/fd/dc/53/61fd19c4f99bc8f575dfda2801c9a9c3384ede8a6bacffd456
+Successfully built flute-alc
+Installing collected packages: flute-alc
+Successfully installed flute-alc-1.10.3
+░▒▓ ~/flute-main  cd py_tests                                     ✔  27s  flute_py    10:37:06 下午 ▓▒░
+░▒▓ ~/flute-main/py_tests  python -m unittest __init__.py               ✔  flute_py    10:38:43 下午 ▓▒░
+------- test_create_multireceiver--------
+Flute Receiver created !
+.------- test_create_receiver--------
+Flute Receiver created !
+.------- test_create_sender--------
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:227 TSI=1 Publish new FDT
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:304 TSI=1 Start transmission of FDT
+DEBUG flute.common.partition 2025-08-31 22:38:59,362 partition.rs:38 t=1 n=1 b=64 l=1085 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,362 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:186 offset=1085/1085 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,362 alc.rs:123 Send ALC sbn=0 esi=0 toi=0
+Received pkt of 1137 bytes
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:346 TSI=1 Stop transmission of FDT
+INFO flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:321 Start transmission of file://hello.txt/ toi=1
+DEBUG flute.common.partition 2025-08-31 22:38:59,362 partition.rs:38 t=1 n=1 b=64 l=5 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,362 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:186 offset=5/5 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,362 alc.rs:123 Send ALC sbn=0 esi=0 toi=1
+Received pkt of 41 bytes
+INFO flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:360 Stop transmission of file://hello.txt/ toi=1
+File transmitted !
+.------- test_lct--------
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:227 TSI=1234 Publish new FDT
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:304 TSI=1234 Start transmission of FDT
+DEBUG flute.common.partition 2025-08-31 22:38:59,362 partition.rs:38 t=1 n=1 b=64 l=1087 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,362 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:186 offset=1087/1087 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,362 alc.rs:123 Send ALC sbn=0 esi=0 toi=0
+.------- test_remove_object--------
+object with TOI 1 added
+.------- test_send_multi_receiver--------
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:227 TSI=1 Publish new FDT
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:304 TSI=1 Start transmission of FDT
+DEBUG flute.common.partition 2025-08-31 22:38:59,362 partition.rs:38 t=1 n=1 b=64 l=1087 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,362 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:186 offset=1087/1087 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,362 alc.rs:123 Send ALC sbn=0 esi=0 toi=0
+INFO flute.receiver.multireceiver 2025-08-31 22:38:59,362 multireceiver.rs:300 Create FLUTE Receiver ReceiverEndpoint { endpoint: UDPEndpoint { source_address: None, destination_group_address: "224.0.0.1", port: 1234 }, tsi: 1 }
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:90 Create new Object Receiver with toi 0
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:617 Set cenc from pkt Some(Null)
+DEBUG flute.common.partition 2025-08-31 22:38:59,362 partition.rs:38 t=1 n=1 b=64 l=1087 e=1400
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:705 Block partitioning
+        toi=0
+         tl=Some(1087) a_large=1 a_small=1 nb_a_large=0 maximum_source_block_length=64
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:717 oti=Oti { fec_encoding_id: NoCode, fec_instance_id: 0, maximum_source_block_length: 64, encoding_symbol_length: 1400, max_number_of_parity_symbols: 0, scheme_specific: None, inband_fti: true }
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:725 Preallocate 1 blocks of 1 or 1 symbols to decode a file of Some(1087) bytes with toi 0
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:257 Init block 0 with length 1087
+DEBUG flute.receiver.blockdecoder 2025-08-31 22:38:59,362 blockdecoder.rs:120 Block completed
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:271 block 0 is completed
+DEBUG flute.receiver.receiver 2025-08-31 22:38:59,362 receiver.rs:413 TSI=1 Attach FDT id 1
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:346 TSI=1 Stop transmission of FDT
+INFO flute.sender.fdt 2025-08-31 22:38:59,362 fdt.rs:321 Start transmission of file://hello.txt/ toi=1
+DEBUG flute.common.partition 2025-08-31 22:38:59,362 partition.rs:38 t=1 n=1 b=64 l=11 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,362 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,362 blockencoder.rs:186 offset=11/11 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,362 alc.rs:123 Send ALC sbn=0 esi=0 toi=1
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,362 objectreceiver.rs:90 Create new Object Receiver with toi 1
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:320 Set cenc from FDT Some(Null)
+DEBUG flute.common.fdtinstance 2025-08-31 22:38:59,363 fdtinstance.rs:585 Cannot find OTI File { cache_control: None, delimiter: None, alternate_content_location_1: None, alternate_content_location_2: None, delimiter2: None, group: None, mbms_session_identity: None, content_location: "file://hello.txt/", toi: "1", content_length: Some(11), transfer_length: Some(11), content_type: Some("text"), content_encoding: Some("null"), content_md5: Some("XrY7u+Ae7tCTyyK7j1rNww=="), fec_oti_fec_encoding_id: None, fec_oti_fec_instance_id: None, fec_oti_maximum_source_block_length: None, fec_oti_encoding_symbol_length: None, fec_oti_max_number_of_encoding_symbols: None, fec_oti_scheme_specific_info: None, decryption_key_uri: None, fec_redundancy_level: None, file_etag: None, independent_unit_positions: None, optel_propagator: None }
+DEBUG flute.common.partition 2025-08-31 22:38:59,363 partition.rs:38 t=1 n=1 b=64 l=11 e=1400
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:705 Block partitioning
+        toi=1
+         tl=Some(11) a_large=1 a_small=1 nb_a_large=0 maximum_source_block_length=64
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:717 oti=Oti { fec_encoding_id: NoCode, fec_instance_id: 0, maximum_source_block_length: 64, encoding_symbol_length: 1400, max_number_of_parity_symbols: 0, scheme_specific: None, inband_fti: false }
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:725 Preallocate 1 blocks of 1 or 1 symbols to decode a file of Some(11) bytes with toi 1
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:257 Init block 0 with length 11
+DEBUG flute.receiver.blockdecoder 2025-08-31 22:38:59,363 blockdecoder.rs:120 Block completed
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:271 block 0 is completed
+INFO flute.receiver.writer.objectwriterbuffer 2025-08-31 22:38:59,363 objectwriterbuffer.rs:121 Object complete !
+DEBUG flute.receiver.receiver 2025-08-31 22:38:59,363 receiver.rs:512 Object state is completed UDPEndpoint { source_address: None, destination_group_address: "224.0.0.1", port: 1234 } tsi=1 toi=1
+DEBUG flute.receiver.receiver 2025-08-31 22:38:59,363 receiver.rs:552 Remove object UDPEndpoint { source_address: None, destination_group_address: "224.0.0.1", port: 1234 } tsi=1 toi=1
+INFO flute.sender.fdt 2025-08-31 22:38:59,363 fdt.rs:360 Stop transmission of file://hello.txt/ toi=1
+.------- test_send_receiver--------
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,363 fdt.rs:227 TSI=1 Publish new FDT
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,363 fdt.rs:304 TSI=1 Start transmission of FDT
+DEBUG flute.common.partition 2025-08-31 22:38:59,363 partition.rs:38 t=1 n=1 b=64 l=1087 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,363 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,363 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,363 blockencoder.rs:186 offset=1087/1087 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,363 alc.rs:123 Send ALC sbn=0 esi=0 toi=0
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:90 Create new Object Receiver with toi 0
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:617 Set cenc from pkt Some(Null)
+DEBUG flute.common.partition 2025-08-31 22:38:59,363 partition.rs:38 t=1 n=1 b=64 l=1087 e=1400
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:705 Block partitioning
+        toi=0
+         tl=Some(1087) a_large=1 a_small=1 nb_a_large=0 maximum_source_block_length=64
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:717 oti=Oti { fec_encoding_id: NoCode, fec_instance_id: 0, maximum_source_block_length: 64, encoding_symbol_length: 1400, max_number_of_parity_symbols: 0, scheme_specific: None, inband_fti: true }
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:725 Preallocate 1 blocks of 1 or 1 symbols to decode a file of Some(1087) bytes with toi 0
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:257 Init block 0 with length 1087
+DEBUG flute.receiver.blockdecoder 2025-08-31 22:38:59,363 blockdecoder.rs:120 Block completed
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:271 block 0 is completed
+DEBUG flute.receiver.receiver 2025-08-31 22:38:59,363 receiver.rs:413 TSI=1 Attach FDT id 1
+DEBUG flute.sender.fdt 2025-08-31 22:38:59,363 fdt.rs:346 TSI=1 Stop transmission of FDT
+INFO flute.sender.fdt 2025-08-31 22:38:59,363 fdt.rs:321 Start transmission of file://hello.txt/ toi=1
+DEBUG flute.common.partition 2025-08-31 22:38:59,363 partition.rs:38 t=1 n=1 b=64 l=11 e=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,363 blockencoder.rs:160 Read block nb 0
+DEBUG flute.sender.block 2025-08-31 22:38:59,363 block.rs:30 nb_source_symbols=1 encoding_symbol_length=1400
+DEBUG flute.sender.blockencoder 2025-08-31 22:38:59,363 blockencoder.rs:186 offset=11/11 end=true
+DEBUG flute.common.alc 2025-08-31 22:38:59,363 alc.rs:123 Send ALC sbn=0 esi=0 toi=1
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:90 Create new Object Receiver with toi 1
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:320 Set cenc from FDT Some(Null)
+DEBUG flute.common.fdtinstance 2025-08-31 22:38:59,363 fdtinstance.rs:585 Cannot find OTI File { cache_control: None, delimiter: None, alternate_content_location_1: None, alternate_content_location_2: None, delimiter2: None, group: None, mbms_session_identity: None, content_location: "file://hello.txt/", toi: "1", content_length: Some(11), transfer_length: Some(11), content_type: Some("text"), content_encoding: Some("null"), content_md5: Some("XrY7u+Ae7tCTyyK7j1rNww=="), fec_oti_fec_encoding_id: None, fec_oti_fec_instance_id: None, fec_oti_maximum_source_block_length: None, fec_oti_encoding_symbol_length: None, fec_oti_max_number_of_encoding_symbols: None, fec_oti_scheme_specific_info: None, decryption_key_uri: None, fec_redundancy_level: None, file_etag: None, independent_unit_positions: None, optel_propagator: None }
+DEBUG flute.common.partition 2025-08-31 22:38:59,363 partition.rs:38 t=1 n=1 b=64 l=11 e=1400
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:705 Block partitioning
+        toi=1
+         tl=Some(11) a_large=1 a_small=1 nb_a_large=0 maximum_source_block_length=64
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:717 oti=Oti { fec_encoding_id: NoCode, fec_instance_id: 0, maximum_source_block_length: 64, encoding_symbol_length: 1400, max_number_of_parity_symbols: 0, scheme_specific: None, inband_fti: false }
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:725 Preallocate 1 blocks of 1 or 1 symbols to decode a file of Some(11) bytes with toi 1
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:257 Init block 0 with length 11
+DEBUG flute.receiver.blockdecoder 2025-08-31 22:38:59,363 blockdecoder.rs:120 Block completed
+DEBUG flute.receiver.objectreceiver 2025-08-31 22:38:59,363 objectreceiver.rs:271 block 0 is completed
+INFO flute.receiver.writer.objectwriterbuffer 2025-08-31 22:38:59,363 objectwriterbuffer.rs:121 Object complete !
+DEBUG flute.receiver.receiver 2025-08-31 22:38:59,363 receiver.rs:512 Object state is completed UDPEndpoint { source_address: None, destination_group_address: "224.0.0.1", port: 1234 } tsi=1 toi=1
+DEBUG flute.receiver.receiver 2025-08-31 22:38:59,363 receiver.rs:552 Remove object UDPEndpoint { source_address: None, destination_group_address: "224.0.0.1", port: 1234 } tsi=1 toi=1
+INFO flute.sender.fdt 2025-08-31 22:38:59,363 fdt.rs:360 Stop transmission of file://hello.txt/ toi=1
+.
+----------------------------------------------------------------------
+Ran 7 tests in 0.002s
