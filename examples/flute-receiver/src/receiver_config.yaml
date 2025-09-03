@@ -1,0 +1,32 @@
+# flute-receiver/config/receiver_config.yaml
+
+# 网络配置
+network:
+  bind_address: "0.0.0.0"           # 绑定地址
+  port: 3500                        # 监听端口
+  buffer_size: 1048576               # 接收缓冲区大小(1MB)
+  socket_buffer_size: 1048576         # Socket缓冲区大小
+
+# 文件存储配置
+storage:
+  destination_dir: "./files_save"     # 文件保存目录
+  enable_md5_check: true             # 启用MD5校验
+  overwrite_existing: false          # 是否覆盖已存在文件
+
+# FLUTE接收器配置
+flute:
+  enable_multireceiver: true         # 启用多接收器模式
+  cleanup_interval: 60               # 清理间隔(秒)
+
+# 日志配置
+logging:
+  level: "info"                     # 日志级别: error, warn, info, debug, trace
+  show_progress: true               # 显示进度信息
+  progress_interval: 100            # 进度显示间隔(包数)
+  log_source_address: true          # 记录源地址
+
+# 高级配置
+advanced:
+  max_packet_size: 204800           # 最大包大小
+  receive_timeout: 30               # 接收超时(秒)
+  enable_statistics: true           # 启用统计信息
