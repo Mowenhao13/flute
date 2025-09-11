@@ -89,70 +89,63 @@
 //     log::info!("File transfer completed. Total packets sent: {}", sent_packets);
 // }
 
-// flute-sender/src/main.rs
 use flute::{
-    core::UDPEndpoint,
     core::lct::Cenc,
     core::Oti,
-    sender::{ObjectDesc, Sender, Config as FluteConfig},
+    core::UDPEndpoint,
+    sender::{Config as SenderConfig, ObjectDesc, Sender},
 };
-use std::{net::UdpSocket, time::SystemTime};
 use serde::Deserialize;
 use std::fs;
+use std::path::Path;
+use std::time::{Duration, Instant};
+use std::{net::UdpSocket, time::SystemTime};
 
-// 配置结构体
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    network: NetworkConfig,
-    fec: FecConfig,
-    flute: FluteSettings,
-    transfer: TransferConfig,
-    logging: LoggingConfig,
-    files: Vec<FileConfig>,
-    advanced: AdvancedConfig,
+    sender: SenderConfigSection,
 }
 
 #[derive(Debug, Deserialize)]
-struct NetworkConfig {
+struct SenderConfigSection {
+    network: SenderNetworkConfig,
+    fec: SenderFecConfig,
+    flute: SenderFluteConfig,
+    logging: SenderLoggingConfig,
+    files: Vec<FileConfig>,
+    // New param
+    max_rate_kbps: Option<u32>,        // 最大速率限制 (kbps)
+    send_interval_micros: Option<u64>, // 发送间隔微秒
+}
+
+#[derive(Debug, Deserialize)]
+struct SenderNetworkConfig {
     destination: String,
     bind_address: String,
     bind_port: u16,
-    send_buffer_size: usize,
     send_interval_micros: u64,
 }
 
 #[derive(Debug, Deserialize)]
-struct FecConfig {
+struct SenderFecConfig {
     #[serde(rename = "type")]
     fec_type: String,
-    symbol_size: u32,
-    source_symbols: u32,
-    repair_symbols: u32,
+    encoding_symbol_length: u16,
+    max_number_of_parity_symbols: u32,
     encoding_symbol_id_length: u8,
-    maximum_source_block_length: u8,
+    maximum_source_block_length: u32,
+    symbol_alignment: u8,
+    sub_blocks_length: u16,
 }
 
 #[derive(Debug, Deserialize)]
-struct FluteSettings {
+struct SenderFluteConfig {
     tsi: u32,
-    content_type: String,
-    enable_md5: bool,
-    version: u32,
-    publish_mode: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TransferConfig {
-    priority_queue: u8,
     interleave_blocks: u32,
-    target_duration_secs: u64,
-    carousel_mode: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct LoggingConfig {
-    level: String,
-    show_progress: bool,
+struct SenderLoggingConfig {
     progress_interval: u32,
 }
 
@@ -164,178 +157,234 @@ struct FileConfig {
     version: u32,
 }
 
-#[derive(Debug, Deserialize)]
-struct AdvancedConfig {
-    cenc: String,
-    use_complete_fdt: bool,
-    allow_updates: bool,
-}
-
-fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
-    let config_str = fs::read_to_string("sender_config.yaml")?;
+fn load_config(config_path: &Path) -> Result<AppConfig, Box<dyn std::error::Error>> {
+    log::debug!("Loading configuration from: {}", config_path.display());
+    let config_str = fs::read_to_string(config_path)?;
     let config: AppConfig = serde_yaml::from_str(&config_str)?;
     Ok(config)
 }
 
 fn main() {
-    let start_time = std::time::Instant::now(); 
-    // 加载配置
-    let config = match load_config() {
-        Ok(cfg) => cfg,
+    std::env::set_var("RUST_LOG", "info");
+    env_logger::builder().try_init().ok();
+
+    let config_path =
+        Path::new("/home/halllo/flute-main/examples/config/config_1024mb_raptorq.yaml");
+    let config = match load_config(&config_path) {
+        Ok(cfg) => {
+            log::info!("Using configuration file: {}", config_path.display());
+            cfg
+        }
         Err(e) => {
-            eprintln!("Failed to load config: {}", e);
+            eprintln!(
+                "Failed to load config from {}: {}",
+                config_path.display(),
+                e
+            );
             std::process::exit(1);
         }
     };
 
-    // 设置日志级别
-    std::env::set_var("RUST_LOG", &config.logging.level);
-    env_logger::builder().try_init().ok();
+    let endpoint = UDPEndpoint::new(
+        None,
+        config.sender.network.bind_address.clone(),
+        config.sender.network.bind_port,
+    );
+    
 
-    log::info!("Starting FLUTE sender with config: {:?}", config);
+    let udp_socket = UdpSocket::bind(format!(
+        "{}:{}",
+        config.sender.network.bind_address, config.sender.network.bind_port
+    ))
+    .unwrap();
 
-    // 创建FEC配置 - 修复类型转换
-    let oti = match config.fec.fec_type.as_str() {
-        "no_code" => Oti::new_no_code(
-            config.fec.symbol_size.try_into().unwrap(),
-            config.fec.source_symbols.try_into().unwrap()
-        ),
-        "reed_solomon" => Oti::new_reed_solomon_rs28(
-            config.fec.symbol_size.try_into().unwrap(),
-            config.fec.source_symbols.try_into().unwrap(),
-            config.fec.repair_symbols.try_into().unwrap(),
-        ).expect("Failed to create Reed-Solomon OTI"),
+    let tsi = config.sender.flute.tsi;
+
+    // 创建OTI配置
+    // let symbol_size: u16 = config.sender.fec.symbol_size.try_into().unwrap();
+    // let source_symbols: u16 = config.sender.fec.source_symbols.try_into().unwrap();
+    let max_number_of_parity_symbols: u16 = config.sender.fec.max_number_of_parity_symbols.try_into().unwrap();
+    let encoding_symbol_length: u16 = config.sender.fec.encoding_symbol_length.try_into().unwrap();
+    // let source_symbols: u16 = config.sender.fec.source_symbols.try_into().unwrap();
+    let encoding_symbol_id_length = config.sender.fec.encoding_symbol_id_length;
+    let max_source_block_length = config.sender.fec.maximum_source_block_length;
+    let symbol_alignment = config.sender.fec.symbol_alignment;
+    let sub_blocks_length = config.sender.fec.sub_blocks_length;
+
+    let oti = match config.sender.fec.fec_type.as_str() {
+        "no_code" => Oti::new_no_code(encoding_symbol_length, max_source_block_length),
+        "reed_solomon_gf28" => Oti::new_reed_solomon_rs28(
+            encoding_symbol_length,
+            max_source_block_length,
+            max_number_of_parity_symbols as u8,
+        ).expect("Invalid Reed Solomon GF28 parameters"),
+        "reed_solomon_gf28_under_specified" => Oti::new_reed_solomon_rs28_under_specified(
+            encoding_symbol_length,
+            max_source_block_length,
+            max_number_of_parity_symbols,
+        ).expect("Invalid Reed Solomon GF28 Under Specified parameters"),
         "raptor" => Oti::new_raptor(
-            config.fec.symbol_size.try_into().unwrap(),
-            config.fec.source_symbols.try_into().unwrap(),
-            config.fec.repair_symbols.try_into().unwrap(),
-            config.fec.encoding_symbol_id_length.into(),
-            config.fec.maximum_source_block_length.into(),
-        ).expect("Failed to create Raptor OTI"),  // 添加 expect 处理 Result
+            encoding_symbol_length,
+            max_source_block_length,
+            max_number_of_parity_symbols,
+            encoding_symbol_id_length,
+            symbol_alignment, // 默认对齐参数
+        ).expect("Invalid Raptor parameters"),
         "raptorq" => Oti::new_raptorq(
-            config.fec.symbol_size.try_into().unwrap(),
-            config.fec.source_symbols.try_into().unwrap(),
-            config.fec.repair_symbols.try_into().unwrap(),
-            config.fec.encoding_symbol_id_length.into(),
-            config.fec.maximum_source_block_length.into(),
-        ).expect("Failed to create RaptorQ OTI"),  // 添加 expect 处理 Result
-        _ => panic!("Unknown FEC type: {}", config.fec.fec_type),
+            encoding_symbol_length,
+            max_source_block_length,
+            max_number_of_parity_symbols,
+            sub_blocks_length,
+            symbol_alignment, 
+        ).expect("Invalid RaptorQ parameters"),
+        _ => panic!("Unsupported FEC type: {}", config.sender.fec.fec_type),
     };
 
-    // 创建FLUTE发送器配置 - 修复类型转换
-    let mut flute_config = FluteConfig::default();
-    flute_config.interleave_blocks = config.transfer.interleave_blocks.try_into().unwrap();
+    log::info!("Using FEC: {:?}", oti.fec_encoding_id);
+    log::info!("Symbol size: {} bytes", oti.encoding_symbol_length);
+    log::info!("Max source block length: {}", oti.maximum_source_block_length);
+    log::info!("Max parity symbols: {}", oti.max_number_of_parity_symbols);
+    log::info!("Max symbol alignment: {}", oti.max_number_of_parity_symbols);
+    let mut sender_config = SenderConfig::default();
+    sender_config.interleave_blocks = config.sender.flute.interleave_blocks.try_into().unwrap();
 
-    // 创建 UDP 端点 - 使用 clone() 避免移动
-    let endpoint = UDPEndpoint::new(None, config.network.bind_address.clone(), 3400);
+    let mut sender = Sender::new(endpoint, tsi.into(), &oti, &sender_config);
 
-    // 创建 UDP socket - 现在可以安全使用 config.network.bind_address
-    let udp_socket = UdpSocket::bind(format!("{}:{}", config.network.bind_address, config.network.bind_port))
+    udp_socket
+        .connect(&config.sender.network.destination)
         .unwrap();
-    
-    // 移除不存在的set_send_buffer_size方法
-    // udp_socket.set_send_buffer_size(config.network.send_buffer_size).unwrap();
 
-    // 连接到目标
-    udp_socket.connect(&config.network.destination).expect("Connection failed");
 
-    // 创建FLUTE发送器 - 修复类型转换
-    let mut sender = Sender::new(endpoint, config.flute.tsi.into(), &oti, &flute_config);
-
-    log::info!("Sending to {}", config.network.destination);
-
-    // 添加文件到发送器 - 修复类型转换
-    for file_config in &config.files {
-        let path = std::path::Path::new(&file_config.path);
-        
+    for file_config in &config.sender.files {
+        let path = Path::new(&file_config.path);
         if !path.is_file() {
             log::error!("File not found: {}", file_config.path);
             continue;
         }
 
-        log::info!("Inserting file: {}", file_config.path);
-        
-        let cenc = match config.advanced.cenc.as_str() {
-            "Null" => Cenc::Null,
-            "Deflate" => Cenc::Deflate,
-            "Zlib" => Cenc::Zlib,
-            "Gzip" => Cenc::Gzip,
-            _ => Cenc::Null,
-        };
-
+        log::info!("Insert file {} to FLUTE sender", file_config.path);
         let obj = ObjectDesc::create_from_file(
             path,
             None,
             &file_config.content_type,
-            config.flute.enable_md5,
+            true,
             file_config.version,
             None,
             None,
             None,
             None,
-            cenc,
-            config.advanced.use_complete_fdt,
+            Cenc::Null,
+            true,
             None,
-            config.advanced.allow_updates,
-        ).unwrap();
-        
-        sender.add_object(config.transfer.priority_queue.into(), obj).unwrap();
+            true,
+        )
+        .unwrap();
+        sender.add_object(file_config.priority.into(), obj).unwrap();
     }
 
-    log::info!("Publish FDT update");
     sender.publish(SystemTime::now()).unwrap();
-    
+
+    log::info!("Starting file transmission...");
+    let start_time = Instant::now();
+    let mut total_bytes_sent = 0;
+
+    let max_rate_kbps = config.sender.max_rate_kbps.unwrap_or(0);
+    let send_interval = config.sender.send_interval_micros.unwrap_or(2);
+
+    // 计算每个包的理论发送时间
+    let packet_size = encoding_symbol_length as f64; // 符号大小（字节）
+    let packets_per_second = if max_rate_kbps > 0 {
+        // 计算每秒允许发送的包数
+        let bits_per_second = (max_rate_kbps as f64) * 1000.0;
+        let bytes_per_second = bits_per_second / 8.0;
+        (bytes_per_second / packet_size) as u64
+    } else {
+        // 无限制时使用配置的间隔
+        1_000_000 / send_interval // 转换为每秒包数
+    };
+
+    let min_packet_interval = if max_rate_kbps > 0 {
+        Duration::from_micros(1_000_000 / packets_per_second)
+    } else {
+        Duration::from_micros(send_interval)
+    };
+
+    log::info!(
+        "Rate control: max_rate={}kbps, interval={:?}",
+        max_rate_kbps,
+        min_packet_interval
+    );
+
+    let mut last_send_time = Instant::now();
     let mut sent_packets = 0;
+    let mut last_log_time = Instant::now();
+    let log_interval = Duration::from_secs(1);
+    let mut bytes_sent_since_last_log = 0;
+
     while let Some(pkt) = sender.read(SystemTime::now()) {
+        // 速率控制：确保最小发送间隔
+        let elapsed = last_send_time.elapsed();
+        if elapsed < min_packet_interval {
+            std::thread::sleep(min_packet_interval - elapsed);
+        }
+
         match udp_socket.send(&pkt) {
-            Ok(_) => {
+            Ok(bytes_sent) => {
+                total_bytes_sent += bytes_sent;
+                bytes_sent_since_last_log += bytes_sent;
                 sent_packets += 1;
-                if config.logging.show_progress && sent_packets % config.logging.progress_interval == 0 {
-                    log::info!("Sent {} packets", sent_packets);
+                last_send_time = Instant::now();
+
+                if sent_packets % config.sender.logging.progress_interval == 0 {
+                    // log::info!("Sent {} packets", sent_packets);
+                    let current_time = Instant::now();
+                    let elapsed_since_last_log = current_time.duration_since(last_log_time).as_secs_f64();
+
+                    // 计算瞬时速率（过去100个包的速率）
+                    let instant_rate_mbps = (bytes_sent_since_last_log as f64 * 8.0) / elapsed_since_last_log / 1_000_000.0;
+
+                    // 计算全局平均速率
+                    let total_elapsed = current_time.duration_since(start_time).as_secs_f64();
+                    let average_rate_mbps = (total_bytes_sent as f64 * 8.0) / total_elapsed / 1_000_000.0;
+
+                    log::info!(
+                        "Progress: {} packets ({} MB) | Instant: {:.2} Mbps | Avg: {:.2} Mbps | Elapsed: {:.2}s",
+                        sent_packets,
+                        total_bytes_sent / (1024 * 1024),
+                        instant_rate_mbps,
+                        average_rate_mbps,
+                        total_elapsed
+                    );
                 }
             }
             Err(e) => {
                 log::error!("Failed to send packet: {}", e);
             }
         }
-        std::thread::sleep(std::time::Duration::from_micros(config.network.send_interval_micros));
+        std::thread::sleep(std::time::Duration::from_micros(
+            config.sender.network.send_interval_micros,
+        ));
     }
 
-    let file_size = config.files.iter()
-    .map(|f| std::fs::metadata(&f.path).map(|m| m.len()).unwrap_or(0))
-    .sum::<u64>();
-
+    // 传输完成后的详细统计
     let total_time = start_time.elapsed();
-    let file_size = config.files.iter()
-    .map(|f| std::fs::metadata(&f.path).map(|m| m.len()).unwrap_or(0))
-    .sum::<u64>();
+    let total_mb = total_bytes_sent as f64 / (1024.0 * 1024.0);
+    let average_rate_mbps = (total_bytes_sent as f64 * 8.0) / total_time.as_secs_f64() / 1_000_000.0;
 
-    let symbol_size = config.fec.symbol_size as u64;  // 转换为u64避免乘法类型冲突
-    let total_packet_capacity = sent_packets as u64 * symbol_size;
-    let overhead_percentage = if total_packet_capacity > 0 {
-        (1.0 - (file_size as f64 / total_packet_capacity as f64)) * 100.0
-    } else { 0.0 };
-
-    let effective_rate = if total_time.as_secs_f64() > 0.0 {
-        (file_size as f64 * 8.0) / total_time.as_secs_f64() / 1_000_000.0
-    } else { 0.0 };
-
+    log::info!("==========================================");
+    log::info!("FILE TRANSFER COMPLETED");
+    log::info!("==========================================");
+    log::info!("Total time: {:.2} seconds", total_time.as_secs_f64());
+    log::info!("Total packets: {}", sent_packets);
+    log::info!("Total data: {:.2} MB", total_mb);
+    log::info!("Average rate: {:.2} Mbps", average_rate_mbps);
+    log::info!("Average rate: {:.2} MB/s", average_rate_mbps / 8.0);
+    log::info!("Packet rate: {:.2} packets/second", 
+               sent_packets as f64 / total_time.as_secs_f64());
+    log::info!("==========================================");
     log::info!(
-        "\n=== Transfer Summary ===\n\
-        Files:      {}\n\
-        Size:       {:.2} MB\n\
-        Duration:   {:.2?}\n\
-        Rate:       {:.2} Mbps\n\
-        Packets:    {}\n\
-        Efficiency: {:.1}% (overhead: {:.1}%)\n\
-        ========================",
-        config.files.len(),
-        file_size as f64 / 1_000_000.0,
-        total_time,
-        effective_rate,
-        sent_packets,
-        100.0 - overhead_percentage,
-        overhead_percentage
+        "File transfer completed. Total packets sent: {}",
+        sent_packets
     );
-    log::info!("File transfer completed. Total packets sent: {}", sent_packets);
 }
+

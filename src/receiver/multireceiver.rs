@@ -95,6 +95,9 @@ impl MultiReceiver {
         config: Option<Config>,               // 可选配置
         enable_tsi_filtering: bool           // 是否启用TSI过滤
     ) -> MultiReceiver {
+        log::info!("Creating new MultiReceiver with TSI filtering={}", enable_tsi_filtering);
+        log::debug!("Configuration: {:?}", config);
+
         MultiReceiver {
             alc_receiver: HashMap::new(),
             writer,
@@ -118,6 +121,7 @@ impl MultiReceiver {
     {
         let id = self.listeners_id;
         self.listeners_id += 1;
+        log::debug!("Adding listener with ID={}", id);
         self.listeners.insert(id, Box::new(listener));
         id
     }
@@ -127,6 +131,7 @@ impl MultiReceiver {
     /// # Arguments
     /// * `id` - The id of the listener to remove
     pub fn remove_listener(&mut self, id: u64) {
+        log::debug!("Removing listener with ID={}", id);
         self.listeners.remove(&id);
     }
 
@@ -168,10 +173,10 @@ impl MultiReceiver {
     // 允许接收指定端点的特定 TSI 数据包
     pub fn add_listen_tsi(&mut self, endpoint: UDPEndpoint, tsi: u64) {
         if !self.enable_tsi_filtering {
-            log::warn!("TSI filtering is disabled");
+            log::warn!("TSI filtering is disabled, but adding TSI filter for TSI={}", tsi);
         }
 
-        log::info!("Listen TSI {} for {:?}", tsi, endpoint);
+        log::info!("Adding TSI filter: TSI={} for endpoint={:?}", tsi, endpoint);
         self.tsifilter.add(endpoint, tsi);
     }
 
@@ -184,6 +189,7 @@ impl MultiReceiver {
     /// * `tsi` - The TSI value to remove the filter for.
     ///
     pub fn remove_listen_tsi(&mut self, endpoint: &UDPEndpoint, tsi: u64) {
+        log::info!("Removing TSI filter: TSI={} for endpoint={:?}", tsi, endpoint);
         self.tsifilter.remove(endpoint, tsi);
     }
 
@@ -199,6 +205,7 @@ impl MultiReceiver {
 
     /// Remove the acceptance of all TSI sessions for a given endpoint   
     pub fn remove_listen_all_tsi(&mut self, endpoint: &UDPEndpoint) {
+        log::info!("Removing all-TSI filter for endpoint={:?}", endpoint);
         self.tsifilter.remove_endpoint_bypass(endpoint);
     }
 
@@ -233,9 +240,18 @@ impl MultiReceiver {
         pkt: &[u8],              // 数据包内容
         now: SystemTime          // 当前时间
     ) -> Result<()> {
-        let alc = alc::parse_alc_pkt(pkt)?;
+        log::trace!("Received packet from {:?}, length={}", endpoint, pkt.len());
+
+        let alc = match alc::parse_alc_pkt(pkt) {
+            Ok(alc) => alc,
+            Err(e) => {
+                log::error!("Failed to parse ALC packet: {:?}", e);
+                return Err(e);
+            }
+        };
 
         if self.enable_tsi_filtering {
+            log::debug!("Checking TSI filter for TSI={}", alc.lct.tsi);
             let can_handle = self.tsifilter.is_valid(endpoint, alc.lct.tsi);
 
             if !can_handle {
@@ -254,11 +270,12 @@ impl MultiReceiver {
         };
 
         if alc.lct.close_session {
-            log::info!("Close session is set");
+            log::info!("Received close session packet for TSI={}", alc.lct.tsi);
             let mut remove_session = false;
             let ret = match self.get_receiver(&key) {
                 Some(receiver) => {
                     remove_session = true;
+                    log::debug!("Forwarding packet to receiver for TSI={}", alc.lct.tsi);
                     receiver.push(&alc, now)
                 }
                 None => {
@@ -270,14 +287,16 @@ impl MultiReceiver {
             };
 
             if remove_session {
-                log::warn!("Remove closed session");
+                log::info!("Removing session for TSI={}", alc.lct.tsi);
                 self.alc_receiver.remove(&key);
+                log::debug!("Notifying {} listeners about session close", self.listeners.len());
                 for listener in self.listeners.values() {
                     listener.on_session_closed(&key);
                 }
             }
             ret
         } else {
+            log::debug!("Processing regular packet for TSI={}", alc.lct.tsi);
             let receiver = self.get_receiver_or_create(&key);
             receiver.push(&alc, now)
         }
@@ -289,19 +308,27 @@ impl MultiReceiver {
     ///
     /// Cleanup shall be call from time to time to avoid consuming to much memory    
     pub fn cleanup(&mut self, now: SystemTime) {
-        let mut output = Vec::new();
-        for receiver in &self.alc_receiver {
-            if receiver.1.is_expired() {
-                output.push(receiver.0.clone());
+        log::debug!("Starting cleanup at {:?}", now);
+
+        let mut expired_sessions = Vec::new();
+        for (endpoint, receiver) in &self.alc_receiver {
+            if receiver.is_expired() {
+                log::info!("Session expired: {:?}", endpoint);
+                expired_sessions.push(endpoint.clone());
             }
         }
 
+        let before_count = self.alc_receiver.len();
         self.alc_receiver.retain(|_, v| !v.is_expired());
+        log::debug!("Removed {} expired sessions", before_count - self.alc_receiver.len());
+
+        log::debug!("Cleaning up remaining receivers");
         for receiver in &mut self.alc_receiver.values_mut() {
             receiver.cleanup(now);
         }
 
-        for endpoint in &output {
+        log::debug!("Notifying listeners about {} closed sessions", expired_sessions.len());
+        for endpoint in &expired_sessions {
             for listener in self.listeners.values() {
                 listener.on_session_closed(&endpoint);
             }
@@ -315,11 +342,14 @@ impl MultiReceiver {
     }
 
     fn get_receiver_or_create(&mut self, key: &ReceiverEndpoint) -> &mut Receiver {
+        log::trace!("Getting receiver for {:?}", key);
+
         self.alc_receiver
             .entry(key.clone())
             .or_insert_with(|| {
                 log::info!("Create FLUTE Receiver {:?}", key);
 
+                log::debug!("Notifying {} listeners about new session", self.listeners.len());
                 for listener in self.listeners.values() {
                     listener.on_session_open(&key);
                 }
@@ -337,6 +367,8 @@ impl MultiReceiver {
 
 impl Drop for MultiReceiver {
     fn drop(&mut self) {
+        log::debug!("Dropping MultiReceiver with {} active sessions", self.alc_receiver.len());
+        
         for endpoint in self.alc_receiver.keys() {
             for listener in self.listeners.values() {
                 listener.on_session_closed(endpoint);

@@ -195,6 +195,9 @@ impl Sender {
     /// Creation of a FLUTE Sender
     ///
     pub fn new(endpoint: UDPEndpoint, tsi: u64, oti: &oti::Oti, config: &Config) -> Sender {
+        log::info!("Creating new FLUTE Sender: TSI={}, Endpoint={:?}", tsi, endpoint);
+        log::debug!("Sender configuration: {:?}", config);
+
         let observers = ObserverList::new();
 
         let fdt = Fdt::new(
@@ -212,6 +215,8 @@ impl Sender {
             config.fdt_publish_mode,
         );
 
+        log::debug!("FDT created with start_id={}", config.fdt_start_id);
+
         let fdt_session = SenderSession::new(
             0,
             tsi,
@@ -228,6 +233,12 @@ impl Sender {
                 0 => 1,
                 n => n,
             };
+
+            log::debug!(
+                "Creating {} sessions for priority queue {}",
+                multiplex_files,
+                priority
+            );
 
             let new_sessions = (0..multiplex_files)
                 .map(|_| {
@@ -249,6 +260,8 @@ impl Sender {
                 },
             );
         }
+
+        log::info!("FLUTE Sender initialized with {} priority queues", sessions.len());
 
         Sender {
             fdt,
@@ -296,13 +309,22 @@ impl Sender {
     ///
     /// A `Result` containing an `u128` representing the unique identifier of the added object (TOI), if the operation was successful.
     pub fn add_object(&mut self, priority: u32, obj: Box<objectdesc::ObjectDesc>) -> Result<u128> {
+        log::debug!(
+            "Adding object to priority queue {}: {:?}",
+            priority,
+            obj.content_location
+        );
+
         if !self.sessions.contains_key(&priority) {
+            log::error!("Priority queue {} does not exist", priority);
             return Err(FluteError::new(
                 format! {"Priority queue {} does not exist", priority},
             ));
         }
 
-        self.fdt.add_object(priority, obj)
+        let toi = self.fdt.add_object(priority, obj)?;
+        log::info!("Object added with TOI={}", toi);
+        Ok(toi)
     }
 
     /// Initiates the transfer of an object that is broadcasted in a carousel.
@@ -318,7 +340,18 @@ impl Sender {
     /// - `true` if the object is found the triggered is set.
     /// - `false` if the object is not listed in the FDT or the trigger could not be set.
     pub fn trigger_transfer_at(&mut self, toi: u128, timestamp: Option<SystemTime>) -> bool {
-        self.fdt.trigger_transfer_at(toi, timestamp)
+        log::debug!(
+            "Triggering transfer for TOI={} at {:?}",
+            toi,
+            timestamp
+        );
+        let result = self.fdt.trigger_transfer_at(toi, timestamp);
+        if result {
+            log::info!("Transfer triggered for TOI={}", toi);
+        } else {
+            log::warn!("Failed to trigger transfer for TOI={}", toi);
+        }
+        result
     }
 
     /// Check if the object is inside the FDT
@@ -341,7 +374,14 @@ impl Sender {
     ///
     /// `true`if the object has been removed from the FDT
     pub fn remove_object(&mut self, toi: u128) -> bool {
-        self.fdt.remove_object(toi)
+        log::debug!("Removing object with TOI={}", toi);
+        let result = self.fdt.remove_object(toi);
+        if result {
+            log::info!("Object with TOI={} removed", toi);
+        } else {
+            log::warn!("Object with TOI={} not found", toi);
+        }
+        result
     }
 
     /// Return the number of times an object has been transferred,
@@ -371,13 +411,17 @@ impl Sender {
     ///
     /// Required only if fdt_publish_mode is set to FullFDT
     pub fn publish(&mut self, now: SystemTime) -> Result<()> {
-        self.fdt.publish(now)
+        log::debug!("Publishing FDT updates");
+        self.fdt.publish(now)?;
+        log::info!("FDT published successfully");
+        Ok(())
     }
 
     /// Inform that the FDT is complete, no new object should be added after this call
     /// You must not call `add_object()`after
     /// After calling this function, a call to `publish()` is required to publish your modifications
     pub fn set_complete(&mut self) {
+        log::info!("Marking FDT as complete");
         self.fdt.set_complete();
     }
 
@@ -406,22 +450,31 @@ impl Sender {
     /// return None if there is no new packet to be transferred
     /// ALC/LCT packet should be encapsulated into a UDP/IP payload and transferred via UDP/multicast
     pub fn read(&mut self, now: SystemTime) -> Option<Vec<u8>> {
+        log::trace!("Reading next ALC/LCT packet");
+
         if let Some(fdt_data) = self.fdt_session.run(&mut self.fdt, now) {
+            log::debug!("FDT packet ready for transmission");
             return Some(fdt_data);
         }
 
         let fdt = &mut self.fdt;
-        for session in &mut self.sessions {
-            let data = Self::read_priority_queue(fdt, session.1, now);
+        for (priority, session_list) in &mut self.sessions {
+            let data = Self::read_priority_queue(fdt, session_list, now);
             if data.is_some() {
+                log::debug!(
+                    "Data packet ready from priority queue {}",
+                    priority
+                );
                 return data;
             }
         }
 
         if let Some(fdt_data) = self.fdt_session.run(&mut self.fdt, now) {
+            log::debug!("Secondary FDT packet ready for transmission");
             return Some(fdt_data);
         }
 
+        log::trace!("No packets ready for transmission");
         None
     }
 
@@ -430,6 +483,11 @@ impl Sender {
         sessions: &mut SenderSessionList,
         now: SystemTime,
     ) -> Option<Vec<u8>> {
+        log::trace!(
+            "Reading from priority queue (current index={})",
+            sessions.index
+        );
+
         let session_index_orig = sessions.index;
         loop {
             let session = sessions.sessions.get_mut(sessions.index).unwrap();
@@ -441,10 +499,17 @@ impl Sender {
             }
 
             if data.is_some() {
+                log::debug!(
+                    "Found data in session {} of priority queue",
+                    sessions.index
+                );
                 return data;
             }
 
             if sessions.index == session_index_orig {
+                log::trace!(
+                    "Completed full cycle of priority queue without finding data"
+                );
                 break;
             }
         }

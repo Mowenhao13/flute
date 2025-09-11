@@ -1,0 +1,54 @@
+# config_1mb_raptorq.yaml
+# FLUTE 1MB文件传输专用配置 (raptorq)
+# Rate under: unlimited Mbits/sec
+sender:
+  network:
+    destination: "192.168.100.2:3500"  # 使用 veth-receiver 的 IP
+    bind_address: "192.168.100.1"
+    bind_port: 0
+    send_interval_micros: 100  
+
+  fec:
+    type: "raptorq"
+    symbol_size: 1400         # 标准MTU优化值 (1500-60头部)
+    source_symbols: 50
+    repair_symbols: 4
+    encoding_symbol_id_length: 1
+    maximum_source_block_length: 60  # 较大块提升效率
+
+  flute:
+    tsi: 1
+    interleave_blocks: 4     # 更高块交错
+
+  logging:
+    progress_interval: 1000  # 更少日志
+
+  files:
+    - path: "/home/halllo/flute-main/examples/flute-sender/src/files_send/test_1mb.bin"
+      content_type: "application/octet-stream"
+      priority: 0
+      version: 1
+      
+  # 新增速率控制参数
+  max_rate_kbps: 0  
+  send_interval_micros: 1  
+
+receiver:
+  network:
+    bind_address: "192.168.100.2"  # 绑定到 veth-receiver
+    port: 3500
+
+  storage:
+    destination_dir: "/home/halllo/flute-main/examples/flute-receiver/src/files_save"
+    enable_md5_check: true
+
+  logging:
+    progress_interval: 500
+
+  advanced:
+    buffer_size: 16777216     # 增大到16MB缓冲区
+    cleanup_interval: 2000   # 减少清理频率
+    log_interval: 500       # 减少日志频率
+    max_memory_mb: 8192      # 8GB内存限制
+    max_retries: 5           # 新增：最大重试次数
+    retry_delay_ms: 200      # 新增：重试延迟200ms

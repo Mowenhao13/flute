@@ -69,91 +69,291 @@
 //     }
 // }
 
-// flute-receiver/src/main.rs
+
+// use flute::{
+//     core::UDPEndpoint,
+//     receiver::{writer, Config as ReceiverConfig, MultiReceiver},
+//     error::FluteError,
+// };
+// use serde::Deserialize;
+// use std::fs;
+// use std::path::Path;
+// use std::rc::Rc;
+// use std::time::{SystemTime, Duration};
+//
+// #[derive(Debug, Deserialize)]
+// struct AppConfig {
+//     receiver: ReceiverConfigSection,
+// }
+//
+// #[derive(Debug, Deserialize)]
+// struct ReceiverConfigSection {
+//     network: ReceiverNetworkConfig,
+//     storage: ReceiverStorageConfig,
+//     logging: ReceiverLoggingConfig,
+//     advanced: ReceiverAdvancedConfig,
+// }
+//
+// #[derive(Debug, Deserialize)]
+// struct ReceiverNetworkConfig {
+//     bind_address: String,
+//     port: u16,
+// }
+//
+// #[derive(Debug, Deserialize)]
+// struct ReceiverStorageConfig {
+//     destination_dir: String,
+//     enable_md5_check: bool,
+// }
+//
+// #[derive(Debug, Deserialize)]
+// struct ReceiverLoggingConfig {
+//     progress_interval: u32,
+// }
+//
+// #[derive(Debug, Deserialize)]
+// struct ReceiverAdvancedConfig {
+//     buffer_size: usize,
+//     cleanup_interval: u32,
+//     log_interval: u32,
+//     max_memory_mb: u64,
+//     max_retries: u32,
+//     retry_delay_ms: u64,
+//     #[serde(default = "default_true")]
+//     keep_partial_files: bool,
+// }
+//
+// fn default_true() -> bool {
+//     true
+// }
+//
+// fn load_config(config_path: &Path) -> Result<AppConfig, Box<dyn std::error::Error>> {
+//     log::debug!("Loading configuration from: {}", config_path.display());
+//     let config_str = fs::read_to_string(config_path)?;
+//     let config: AppConfig = serde_yaml::from_str(&config_str)?;
+//     Ok(config)
+// }
+//
+// fn main() {
+//     std::env::set_var("RUST_LOG", "info");
+//     env_logger::builder().try_init().ok();
+//
+//     let config_path = Path::new("/home/halllo/flute-main/examples/config/config_1024mb_raptorq.yaml");
+//     let config = match load_config(&config_path) {
+//         Ok(cfg) => {
+//             log::info!("Using configuration file: {}", config_path.display());
+//             cfg
+//         }
+//         Err(e) => {
+//             eprintln!(
+//                 "Failed to load config from {}: {}",
+//                 config_path.display(),
+//                 e
+//             );
+//             std::process::exit(1);
+//         }
+//     };
+//
+//     let endpoint = UDPEndpoint::new(
+//         None,
+//         config.receiver.network.bind_address.clone(),
+//         config.receiver.network.port,
+//     );
+//
+//     let dest_dir = Path::new(&config.receiver.storage.destination_dir);
+//     if !dest_dir.is_dir() {
+//         if let Err(e) = std::fs::create_dir_all(dest_dir) {
+//             log::error!("Failed to create directory {:?}: {}", dest_dir, e);
+//             std::process::exit(-1);
+//         }
+//         log::info!("Created destination directory: {:?}", dest_dir);
+//     }
+//
+//     log::info!("Create FLUTE receiver, writing objects to {:?}", dest_dir);
+//
+//     let mut receiver_config = ReceiverConfig::default();
+//     receiver_config.object_max_cache_size = Some(config.receiver.advanced.max_memory_mb as usize * 1024 * 1024);
+//
+//     let writer = match writer::ObjectWriterFSBuilder::new(dest_dir, config.receiver.storage.enable_md5_check) {
+//         Ok(builder) => Rc::new(builder),
+//         Err(e) => {
+//             log::error!("Failed to create writer: {:?}", e);
+//             std::process::exit(1);
+//         }
+//     };
+//
+//     let mut receiver = MultiReceiver::new(writer, Some(receiver_config), false);
+//
+//     let socket = match std::net::UdpSocket::bind(format!(
+//         "{}:{}",
+//         config.receiver.network.bind_address, config.receiver.network.port
+//     )) {
+//         Ok(socket) => socket,
+//         Err(e) => {
+//             log::error!("Failed to bind UDP socket: {}", e);
+//             std::process::exit(1);
+//         }
+//     };
+//
+//     log::info!(
+//         "Listening on port {} for FLUTE data",
+//         config.receiver.network.port
+//     );
+//
+//     let mut buf = vec![0; config.receiver.advanced.buffer_size];
+//     let mut received_packets = 0;
+//     let max_memory_bytes = config.receiver.advanced.max_memory_mb * 1024 * 1024;
+//     let mut memory_usage: u64 = 0;
+//
+//     let max_retries = config.receiver.advanced.max_retries;
+//     let retry_delay = Duration::from_millis(config.receiver.advanced.retry_delay_ms);
+//     let mut retry_count = 0;
+//
+//
+//     loop {
+//         match socket.recv_from(&mut buf) {
+//             Ok((n, src)) => {
+//                 retry_count = 0;
+//                 received_packets += 1;
+//                 memory_usage += n as u64;
+//
+//                 if memory_usage > max_memory_bytes {
+//                     log::warn!(
+//                         "Memory usage {}MB exceeds limit {}MB, forcing cleanup",
+//                         memory_usage / (1024 * 1024),
+//                         config.receiver.advanced.max_memory_mb
+//                     );
+//                     let now = SystemTime::now();
+//                     receiver.cleanup(now);
+//                     memory_usage = 0;
+//                 }
+//
+//                 if received_packets % config.receiver.advanced.log_interval == 0 {
+//                     log::info!("Received {} packets from {}", received_packets, src);
+//                 }
+//
+//                 let now = SystemTime::now();
+//                 if let Err(e) = receiver.push(&endpoint, &buf[..n], now) {
+//                     log::warn!("Packet processing error (will retry): {:?}", e);
+//                     std::thread::sleep(retry_delay);
+//                     continue;
+//                 }
+//
+//                 if config.receiver.advanced.cleanup_interval > 0 &&
+//                    received_packets % config.receiver.advanced.cleanup_interval == 0
+//                 {
+//                     let now = SystemTime::now();
+//                     receiver.cleanup(now);
+//                     memory_usage = 0;
+//                 }
+//             }
+//             Err(e) => {
+//                 retry_count += 1;
+//                 if retry_count >= max_retries {
+//                     log::error!("Max retries ({}) reached: {}", max_retries, e);
+//                     break;
+//                 }
+//                 log::warn!(
+//                     "Receive error (retry {}/{}): {}",
+//                     retry_count,
+//                     max_retries,
+//                     e
+//                 );
+//                 std::thread::sleep(retry_delay);
+//             }
+//         }
+//     }
+// }
+//
 use flute::{
     core::UDPEndpoint,
-    receiver::{writer, MultiReceiver},
+    receiver::{writer, Config as ReceiverConfig, MultiReceiver},
+    error::FluteError,
 };
-use std::rc::Rc;
 use serde::Deserialize;
 use std::fs;
-use std::os::unix::io::AsRawFd;
-use std::time::{Instant, SystemTime, Duration};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::collections::VecDeque;
+use std::path::Path;
+use std::rc::Rc;
+use std::time::{SystemTime, Duration};
 
-// 配置结构体
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    network: NetworkConfig,
-    storage: StorageConfig,
-    flute: FluteConfig,
-    logging: LoggingConfig,
-    advanced: AdvancedConfig,
+    receiver: ReceiverConfigSection,
 }
 
 #[derive(Debug, Deserialize)]
-struct NetworkConfig {
+struct ReceiverConfigSection {
+    network: ReceiverNetworkConfig,
+    storage: ReceiverStorageConfig,
+    logging: ReceiverLoggingConfig,
+    advanced: ReceiverAdvancedConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReceiverNetworkConfig {
     bind_address: String,
     port: u16,
-    buffer_size: usize,
-    socket_buffer_size: usize,
 }
 
 #[derive(Debug, Deserialize)]
-struct StorageConfig {
+struct ReceiverStorageConfig {
     destination_dir: String,
     enable_md5_check: bool,
-    overwrite_existing: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct FluteConfig {
-    enable_multireceiver: bool,
-    cleanup_interval: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct LoggingConfig {
-    level: String,
-    show_progress: bool,
+struct ReceiverLoggingConfig {
     progress_interval: u32,
-    log_source_address: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct AdvancedConfig {
-    max_packet_size: usize,
-    receive_timeout: u64,
-    enable_statistics: bool,
+struct ReceiverAdvancedConfig {
+    buffer_size: usize,
+    cleanup_interval: u32,
+    log_interval: u32,
+    max_memory_mb: u64,
+    #[serde(default = "default_true")]
+    keep_partial_files: bool,
 }
 
-fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
-    let config_str = fs::read_to_string("receiver_config.yaml")?;
+fn default_true() -> bool {
+    true
+}
+
+fn load_config(config_path: &Path) -> Result<AppConfig, Box<dyn std::error::Error>> {
+    log::debug!("Loading configuration from: {}", config_path.display());
+    let config_str = fs::read_to_string(config_path)?;
     let config: AppConfig = serde_yaml::from_str(&config_str)?;
     Ok(config)
 }
 
 fn main() {
-    // 加载配置
-    let config = match load_config() {
-        Ok(cfg) => cfg,
+    std::env::set_var("RUST_LOG", "info");
+    env_logger::builder().try_init().ok();
+
+    let config_path = Path::new("/home/halllo/flute-main/examples/config/config_1024mb_raptorq.yaml");
+    let config = match load_config(&config_path) {
+        Ok(cfg) => {
+            log::info!("Using configuration file: {}", config_path.display());
+            cfg
+        }
         Err(e) => {
-            eprintln!("Failed to load config: {}", e);
+            eprintln!(
+                "Failed to load config from {}: {}",
+                config_path.display(),
+                e
+            );
             std::process::exit(1);
         }
     };
 
-    // 设置日志级别
-    std::env::set_var("RUST_LOG", &config.logging.level);
-    env_logger::builder().try_init().ok();
+    let endpoint = UDPEndpoint::new(
+        None,
+        config.receiver.network.bind_address.clone(),
+        config.receiver.network.port,
+    );
 
-    log::info!("Starting FLUTE receiver with config: {:?}", config);
-
-    // 使用单播端点
-    let endpoint = UDPEndpoint::new(None, config.network.bind_address.clone(), config.network.port);
-
-    let dest_dir = std::path::Path::new(&config.storage.destination_dir);
+    let dest_dir = Path::new(&config.receiver.storage.destination_dir);
     if !dest_dir.is_dir() {
         if let Err(e) = std::fs::create_dir_all(dest_dir) {
             log::error!("Failed to create directory {:?}: {}", dest_dir, e);
@@ -164,143 +364,78 @@ fn main() {
 
     log::info!("Create FLUTE receiver, writing objects to {:?}", dest_dir);
 
-    let writer = Rc::new(writer::ObjectWriterFSBuilder::new(dest_dir, config.storage.enable_md5_check)
-        .unwrap_or_else(|e| {
+    let mut receiver_config = ReceiverConfig::default();
+    receiver_config.object_max_cache_size = Some(config.receiver.advanced.max_memory_mb as usize * 1024 * 1024);
+
+    let writer = match writer::ObjectWriterFSBuilder::new(dest_dir, config.receiver.storage.enable_md5_check) {
+        Ok(builder) => Rc::new(builder),
+        Err(e) => {
             log::error!("Failed to create writer: {:?}", e);
-            std::process::exit(-1);
-        }));
+            std::process::exit(1);
+        }
+    };
 
-    let mut receiver = MultiReceiver::new(writer, None, false);
+    let mut receiver = MultiReceiver::new(writer, Some(receiver_config), false);
 
-    // 创建普通UDP socket
-    let socket = std::net::UdpSocket::bind(format!("{}:{}", config.network.bind_address, config.network.port))
-        .expect("Failed to bind UDP socket");
+    let socket = match std::net::UdpSocket::bind(format!(
+        "{}:{}",
+        config.receiver.network.bind_address, config.receiver.network.port
+    )) {
+        Ok(socket) => socket,
+        Err(e) => {
+            log::error!("Failed to bind UDP socket: {}", e);
+            std::process::exit(1);
+        }
+    };
 
-    // 设置接收缓冲区大小
-    unsafe {
-        libc::setsockopt(
-            socket.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_RCVBUF,
-            &config.network.socket_buffer_size as *const _ as *const libc::c_void,
-            std::mem::size_of::<i32>() as libc::socklen_t,
-        );
-    }
+    log::info!(
+        "Listening on port {} for FLUTE data",
+        config.receiver.network.port
+    );
 
-    // 设置接收超时
-    socket.set_read_timeout(Some(Duration::from_secs(config.advanced.receive_timeout))).unwrap();
-
-    log::info!("Listening on {}:{} for FLUTE data", config.network.bind_address, config.network.port);
-
-    let mut buf = vec![0; config.advanced.max_packet_size];
+    let mut buf = vec![0; config.receiver.advanced.buffer_size];
     let mut received_packets = 0;
-    let mut total_bytes = 0;
-    let start_time = Instant::now();
-    
-    // 速率统计相关变量
-    let peak_rate = AtomicU64::new(0); // 存储峰值速率（单位：0.01Mbps）
-    let mut last_bytes = 0;
-    let mut last_update = Instant::now();
-    let mut last_report = Instant::now();
-    
-    // 滑动窗口统计（最近10个采样点）
-    const RATE_WINDOW: usize = 10;
-    let mut rate_history = VecDeque::with_capacity(RATE_WINDOW);
-    let mut last_sample_time = Instant::now();
-    let mut last_sample_bytes = 0;
+    let max_memory_bytes = config.receiver.advanced.max_memory_mb * 1024 * 1024;
+    let mut memory_usage: u64 = 0;
 
     loop {
         match socket.recv_from(&mut buf) {
             Ok((n, src)) => {
                 received_packets += 1;
-                total_bytes += n;
+                memory_usage += n as u64;
 
-                // ==== 实时速率计算 ====
-                let now = Instant::now();
-                
-                // 瞬时速率计算（每包）
-                let elapsed = now - last_update;
-                if elapsed.as_secs_f64() > 0.0 {
-                    let current_rate = ((total_bytes - last_bytes) as f64 * 8.0) / elapsed.as_secs_f64() / 1_000_000.0;
-                    
-                    // 更新峰值（保留两位小数）
-                    peak_rate.fetch_max((current_rate * 100.0) as u64, Ordering::Relaxed);
-                    
-                    last_bytes = total_bytes;
-                    last_update = now;
-                }
-
-                // 滑动窗口采样（每100ms或满包时）
-                if now - last_sample_time > Duration::from_millis(100) || n == buf.len() {
-                    let elapsed = (now - last_sample_time).as_secs_f64();
-                    if elapsed > 0.0 {
-                        let rate = ((total_bytes - last_sample_bytes) as f64 * 8.0) / (elapsed * 1_000_000.0);
-                        rate_history.push_back(rate);
-                        if rate_history.len() > RATE_WINDOW {
-                            rate_history.pop_front();
-                        }
-                    }
-                    last_sample_time = now;
-                    last_sample_bytes = total_bytes;
-                }
-
-                // 定期报告（每秒或每100个包）
-                if now - last_report > Duration::from_secs(1) || received_packets % 10 == 0 {
-                    let total_duration = now - start_time;
-                    let avg_rate = (total_bytes as f64 * 8.0) / total_duration.as_secs_f64() / 1_000_000.0;
-                    let window_avg = if !rate_history.is_empty() {
-                        rate_history.iter().sum::<f64>() / rate_history.len() as f64
-                    } else { 0.0 };
-
-                    log::info!(
-                        "Network Statistics:\n\
-                         ├─ Current Rate: {:6.2} Mbps (Window Avg: {:6.2})\n\
-                         ├─ Peak Rate:    {:6.2} Mbps\n\
-                         ├─ Average Rate: {:6.2} Mbps\n\
-                         ├─ Duration:     {:.2?}\n\
-                         └─ Throughput:   {} packets, {} MB",
-                        ((total_bytes - last_bytes) as f64 * 8.0) / (now - last_update).as_secs_f64() / 1_000_000.0,
-                        window_avg,
-                        peak_rate.load(Ordering::Relaxed) as f64 / 100.0,
-                        avg_rate,
-                        total_duration,
-                        received_packets,
-                        total_bytes / 1_000_000
+                if memory_usage > max_memory_bytes {
+                    log::warn!(
+                        "Memory usage {}MB exceeds limit {}MB, forcing cleanup",
+                        memory_usage / (1024 * 1024),
+                        config.receiver.advanced.max_memory_mb
                     );
-
-                    last_report = now;
-                }
-                // ======================
-
-                let now_sys = SystemTime::now();
-                if let Err(e) = receiver.push(&endpoint, &buf[..n], now_sys) {
-                    log::error!("Error processing packet: {:?}", e);
+                    let now = SystemTime::now();
+                    receiver.cleanup(now);
+                    memory_usage = 0;
                 }
 
-                // 定期清理
-                if received_packets % 1000 == 0 {
-                    receiver.cleanup(now_sys);
+                if received_packets % config.receiver.advanced.log_interval == 0 {
+                    log::info!("Received {} packets from {}", received_packets, src);
+                }
+
+                let now = SystemTime::now();
+                if let Err(e) = receiver.push(&endpoint, &buf[..n], now) {
+                    log::warn!("Packet processing error: {:?}", e);
+                    continue;
+                }
+
+                if config.receiver.advanced.cleanup_interval > 0 &&
+                    received_packets % config.receiver.advanced.cleanup_interval == 0
+                {
+                    let now = SystemTime::now();
+                    receiver.cleanup(now);
+                    memory_usage = 0;
                 }
             }
             Err(e) => {
-                if e.kind() == std::io::ErrorKind::TimedOut {
-                    // 超时报告统计
-                    let elapsed = start_time.elapsed();
-                    log::info!(
-                        "Receive timeout. Final Stats:\n\
-                         ├─ Peak Rate:    {:6.2} Mbps\n\
-                         ├─ Average Rate: {:6.2} Mbps\n\
-                         ├─ Duration:     {:.2?}\n\
-                         └─ Total:       {} packets, {} MB",
-                        peak_rate.load(Ordering::Relaxed) as f64 / 100.0,
-                        (total_bytes as f64 * 8.0) / elapsed.as_secs_f64() / 1_000_000.0,
-                        elapsed,
-                        received_packets,
-                        total_bytes / 1_000_000
-                    );
-                    continue;
-                }
-                log::error!("Failed to receive data: {:?}", e);
+                log::error!("Receive error: {}", e);
+                break;
             }
         }
     }

@@ -1,0 +1,58 @@
+# config_1mb_no_code.yaml
+# FLUTE 1MB文件传输专用配置
+sender:
+  network:
+    destination: "127.0.0.1:3500"
+    bind_address: "0.0.0.0"
+    bind_port: 0
+    send_interval_micros: 5
+
+  fec:
+    type: "no_code"
+    symbol_size: 8192
+    source_symbols: 128
+    repair_symbols: 0
+    encoding_symbol_id_length: 4
+    maximum_source_block_length: 64
+    
+    # Reed Solomon 专用参数
+    m: 8
+    g: 1
+    
+    # Raptor/RaptorQ 专用参数
+    sub_blocks_length: 1
+    symbol_alignment: 4
+
+  flute:
+    tsi: 1
+    interleave_blocks: 4
+
+  logging:
+    progress_interval: 500
+
+  files:
+    - path: "/home/halllo/flute-main/examples/flute-sender/src/files_send/test_1mb.bin"
+      content_type: "application/octet-stream"
+      priority: 0
+      version: 1
+
+receiver:
+  network:
+    bind_address: "0.0.0.0"
+    port: 3500
+
+  storage:
+    destination_dir: "/home/halllo/flute-main/examples/flute-receiver/src/files_save"
+    enable_md5_check: true
+
+  logging:
+    progress_interval: 50
+
+  advanced:
+    buffer_size: 131072      # 128KB
+    cleanup_interval: 100    # 每100个包清理一次
+    log_interval: 50         # 每50个包记录日志
+    max_memory_mb: 256       # 最大内存256MB
+    max_retries: 5           # 新增：最大重试次数
+    retry_delay_ms: 200      # 新增：重试延迟200ms
+    keep_partial_files: true # 新增：保留部分接收的文件

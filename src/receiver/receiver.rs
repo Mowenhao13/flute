@@ -104,6 +104,7 @@ impl Receiver {
         writer: Rc<dyn ObjectWriterBuilder>,
         config: Option<Config>,
     ) -> Self {
+        
         Self {
             tsi,
             objects: HashMap::new(),
@@ -130,14 +131,19 @@ impl Receiver {
     /// `true` if the receiver is expired, otherwise `false`.
     ///
     pub fn is_expired(&self) -> bool {
+        log::trace!("Checking if receiver is expired");
         if self.config.session_timeout.is_none() {
+            log::trace!("No session timeout set, receiver never expires");
             return false;
         }
 
-        log::debug!("Check elapsed {:?}", self.last_activity.elapsed());
-        self.last_activity
-            .elapsed()
-            .gt(self.config.session_timeout.as_ref().unwrap())
+        let elapsed = self.last_activity.elapsed();
+        log::debug!(
+            "Checking receiver expiration: elapsed={:?}, timeout={:?}",
+            elapsed,
+            self.config.session_timeout
+        );
+        elapsed.gt(self.config.session_timeout.as_ref().unwrap())
     }
 
     /// Get the number of objects being received.
@@ -175,20 +181,33 @@ impl Receiver {
     /// * `now` - The current `SystemTime` to use for time-related operations.
     ///
     pub fn cleanup(&mut self, now: std::time::SystemTime) {
+        log::debug!("Starting cleanup at {:?}", now);
         self.last_timestamp = Some(now);
         self.cleanup_objects();
         self.cleanup_fdt(now);
+        log::debug!("Cleanup completed");
     }
 
     fn cleanup_fdt(&mut self, now: std::time::SystemTime) {
+        log::trace!("Cleaning up FDT receivers");
         self.fdt_receivers.iter_mut().for_each(|fdt| {
             fdt.1.update_expired_state(now);
         });
 
+        let before_count = self.fdt_receivers.len();
         self.fdt_receivers.retain(|_, fdt| {
             let state = fdt.state();
-            state == fdtreceiver::FDTState::Complete || state == fdtreceiver::FDTState::Receiving
+            let retain = state == fdtreceiver::FDTState::Complete || state == fdtreceiver::FDTState::Receiving;
+            if !retain {
+                log::debug!("Removing FDT in state {:?}", state);
+            }
+            retain
         });
+        log::debug!(
+            "FDT cleanup: removed {} receivers, remaining={}",
+            before_count - self.fdt_receivers.len(),
+            self.fdt_receivers.len()
+        );
     }
 
     fn cleanup_objects(&mut self) {
@@ -257,9 +276,15 @@ impl Receiver {
     // 3.根据TOI类型路由到FDT或对象处理
     // 4.处理会话关闭标志
     pub fn push_data(&mut self, data: &[u8], now: std::time::SystemTime) -> Result<()> {
+        log::trace!("Pushing data packet ({} bytes)", data.len());
         self.last_timestamp = Some(now);
         let alc = alc::parse_alc_pkt(data)?;
         if alc.lct.tsi != self.tsi {
+            log::warn!(
+                "Packet TSI mismatch: expected={}, received={}",
+                self.tsi,
+                alc.lct.tsi
+            );
             return Ok(());
         }
 
@@ -280,18 +305,31 @@ impl Receiver {
     /// A `Result` indicating success (`Ok`) or an error (`Err`).
     ///
     pub fn push(&mut self, alc_pkt: &alc::AlcPkt, now: std::time::SystemTime) -> Result<()> {
+        log::debug!(
+            "Pushing ALC packet: TSI={}, TOI={}, close_session={}",
+            alc_pkt.lct.tsi,
+            alc_pkt.lct.toi,
+            alc_pkt.lct.close_session
+        );
+
         debug_assert!(self.tsi == alc_pkt.lct.tsi);
         self.last_activity = Instant::now();
         self.last_timestamp = Some(now);
 
         if alc_pkt.lct.close_session {
-            log::info!("Close session");
+            log::info!("Received close session flag");
             self.closed_is_imminent = true;
         }
 
         match alc_pkt.lct.toi {
-            toi if toi == lct::TOI_FDT => self.push_fdt_obj(alc_pkt, now),
-            _ => self.push_obj(alc_pkt, now),
+             toi if toi == lct::TOI_FDT => {
+                log::debug!("Processing FDT packet");
+                self.push_fdt_obj(alc_pkt, now)
+            }
+            _ => {
+                log::debug!("Processing object packet (TOI={})", alc_pkt.lct.toi);
+                self.push_obj(alc_pkt, now)
+            }
         }
     }
 
@@ -302,28 +340,30 @@ impl Receiver {
     }
 
     fn push_fdt_obj(&mut self, alc_pkt: &alc::AlcPkt, now: std::time::SystemTime) -> Result<()> {
+        log::trace!("Processing FDT object");
+
         if alc_pkt.fdt_info.is_none() {
             if alc_pkt.lct.close_object {
+                log::trace!("Ignoring close object/session packet without FDT extension");
                 return Ok(());
             }
-
-            if alc_pkt.lct.close_session {
-                return Ok(());
-            }
-
             return Err(FluteError::new("FDT pkt received without FDT Extension"));
         }
+
         let fdt_instance_id = alc_pkt
             .fdt_info
             .as_ref()
             .map(|f| f.fdt_instance_id)
             .unwrap();
+        log::debug!("FDT instance ID: {}", fdt_instance_id);
 
         if self.config.object_receive_once && self.is_fdt_received(fdt_instance_id) {
+            log::debug!("FDT already received (receive_once enabled), skipping");
             return Ok(());
         }
 
         {
+            log::debug!("Creating/updating FDT receiver for instance {}", fdt_instance_id);
             let fdt_receiver = self
                 .fdt_receivers
                 .entry(fdt_instance_id)
@@ -347,13 +387,22 @@ impl Receiver {
             fdt_receiver.push(alc_pkt, now);
 
             if fdt_receiver.state() == fdtreceiver::FDTState::Complete {
+                log::debug!("FDT reception completed, updating expiration state");
                 fdt_receiver.update_expired_state(now);
             }
 
             match fdt_receiver.state() {
-                fdtreceiver::FDTState::Receiving => return Ok(()),
-                fdtreceiver::FDTState::Complete => {}
-                fdtreceiver::FDTState::Error => return Err(FluteError::new("Fail to decode FDT")),
+                fdtreceiver::FDTState::Receiving => {
+                    log::trace!("FDT still receiving");
+                    return Ok(());
+                }
+                fdtreceiver::FDTState::Complete => {
+                    log::debug!("FDT reception completed successfully");
+                }
+                fdtreceiver::FDTState::Error => {
+                    log::error!("Failed to decode FDT");
+                    return Err(FluteError::new("Fail to decode FDT"));
+                }
                 fdtreceiver::FDTState::Expired => {
                     let expiration = fdt_receiver.get_expiration_time().unwrap_or(now);
                     let server_time = fdt_receiver.get_server_time(now);
@@ -384,6 +433,7 @@ impl Receiver {
             }
         }
 
+        log::debug!("Moving FDT to current queue");
         let fdt_current = self.fdt_receivers.remove(&fdt_instance_id);
         if let Some(mut fdt_current) = fdt_current {
             if let Some(xml) = fdt_current.fdt_xml_str() {
@@ -471,39 +521,52 @@ impl Receiver {
     }
 
     fn push_obj(&mut self, pkt: &alc::AlcPkt, now: SystemTime) -> Result<()> {
+        let toi = pkt.lct.toi;
+        log::debug!("Processing object packet for TOI={}", toi);
+
         if self.objects_completed.contains_key(&pkt.lct.toi) {
             if self.config.object_receive_once {
+                log::debug!("Object already received (receive_once enabled), skipping");
                 return Ok(());
             }
 
             let payload_id = alc::get_fec_inline_payload_id(pkt)?;
             if payload_id.sbn == 0 && payload_id.esi == 0 {
+                log::debug!("Restarting reception for completed object TOI={}", toi);
                 self.objects_completed.remove(&pkt.lct.toi);
             } else {
+                log::debug!("Ignoring packet for already completed object");
                 return Ok(());
             }
         }
+
         if self.objects_error.contains(&pkt.lct.toi) {
             let payload_id = alc::get_fec_inline_payload_id(pkt)?;
             if payload_id.sbn == 0 && payload_id.esi == 0 {
                 log::warn!("Re-download object after errors");
                 self.objects_error.remove(&pkt.lct.toi);
             } else {
+                log::debug!("Ignoring packet for errored object");
                 return Ok(());
             }
         }
 
         let mut obj = self.objects.get_mut(&pkt.lct.toi);
         if obj.is_none() {
+            log::debug!("Creating new object receiver for TOI={}", toi);
             self.create_obj(&pkt.lct.toi, now);
             obj = self.objects.get_mut(&pkt.lct.toi);
         }
 
         let obj = match obj {
             Some(obj) => obj.as_mut(),
-            None => return Err(FluteError::new("Bug ? Object not found")),
+            None => {
+                log::error!("Object not found after creation, this should not happen");
+                return Err(FluteError::new("Bug ? Object not found"));
+            }
         };
 
+        log::trace!("Pushing packet to object receiver");
         obj.push(pkt, now);
         self.check_object_state(pkt.lct.toi);
 
@@ -511,27 +574,35 @@ impl Receiver {
     }
 
     fn check_object_state(&mut self, toi: u128) {
+        log::trace!("Checking state for object TOI={}", toi);
+
         let obj = self.objects.get_mut(&toi);
         if obj.is_none() {
+            log::warn!("Object TOI={} not found during state check", toi);
             return;
         }
         let mut remove_object = false;
 
         {
             let obj = obj.unwrap();
+            log::debug!(
+                "Object TOI={} state: {:?}, cache_control={:?}",
+                toi,
+                obj.state,
+                obj.cache_control
+            );
 
             match obj.state {
-                objectreceiver::State::Receiving => {}
+                objectreceiver::State::Receiving => {
+                    log::trace!("Object still receiving");
+                }
                 objectreceiver::State::Completed => {
+                    log::info!("Object TOI={} completed successfully", toi);
                     remove_object = true;
-                    log::debug!(
-                        "Object state is completed {:?} tsi={} toi={}",
-                        self.endpoint,
-                        self.tsi,
-                        obj.toi
-                    );
+                    
 
                     if obj.cache_control != Some(ObjectCacheControl::NoCache) {
+                        log::debug!("Adding completed object to cache");
                         self.objects_completed.insert(
                             obj.toi,
                             ObjectCompletedMeta {

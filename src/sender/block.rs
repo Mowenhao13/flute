@@ -27,8 +27,9 @@ impl Block {
     ) -> Result<Box<Block>> {
         let nb_source_symbols: usize =
             num_integer::div_ceil(buffer.len(), oti.encoding_symbol_length as usize);
-        log::debug!(
-            "nb_source_symbols={} encoding_symbol_length={}",
+        log::info!(
+            "buffer_len = {} nb_source_symbols={} encoding_symbol_length={}",
+            buffer.len(),
             nb_source_symbols,
             oti.encoding_symbol_length
         );

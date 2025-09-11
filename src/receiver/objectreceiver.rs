@@ -1,3 +1,4 @@
+// objectreceiver.rs
 use super::blockdecoder::BlockDecoder;
 use super::blockwriter::BlockWriter;
 use super::writer::ObjectWriterBuilder;
@@ -18,11 +19,11 @@ use super::objectreceiverlogger::ObjectReceiverLogger;
 const MAX_PREALLOCATED_BLOCKS: usize = 2048;
 
 // 核心功能
-// 1.数据包处理​​：接收并解析 ALC/LCT 数据包
-// 2.块解码管理​​：使用 BlockDecoder解码源块
-// 3.数据写入​​：通过 BlockWriter将解码数据写入目标
-// 4.FDT 关联​​：与文件描述表(FDT)交互获取元数据
-// 5.状态管理​​：跟踪对象接收的完整生命周期
+// 1.数据包处理：接收并解析 ALC/LCT 数据包
+// 2.块解码管理：使用 BlockDecoder解码源块
+// 3.数据写入：通过 BlockWriter将解码数据写入目标
+// 4.FDT 关联：与文件描述表(FDT)交互获取元数据
+// 5.状态管理：跟踪对象接收的完整生命周期
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum State {

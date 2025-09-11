@@ -63,7 +63,7 @@ pub struct ReedSolomonGF2MSchemeSpecific {
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RaptorQSchemeSpecific {
-    /// The number of source blocks (Z): 8-bit unsigned integer.  
+    /// The number of source blocks (Z): 8-bit unsigned integer.
     pub source_blocks_length: u8,
     /// The number of sub-blocks (N): 16-bit unsigned integer for Raptor.
     pub sub_blocks_length: u16,
@@ -227,7 +227,7 @@ impl Oti {
     /// A source block is a contiguous portion of the original data that is encoded using the FEC Scheme. 
     
     /// 创建不同 FEC 类型的 OTI 
-    pub fn new_no_code(encoding_symbol_length: u16, maximum_source_block_length: u16) -> Oti {
+    pub fn new_no_code(encoding_symbol_length: u16, maximum_source_block_length: u32) -> Oti {
         Oti {
             fec_encoding_id: FECEncodingID::NoCode,
             fec_instance_id: 0,
@@ -270,7 +270,7 @@ impl Oti {
     ///
     pub fn new_reed_solomon_rs28(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u8,
+        maximum_source_block_length: u32,
         max_number_of_parity_symbols: u8,
     ) -> Result<Oti> {
         let encoding_block_length: u32 =
@@ -321,7 +321,7 @@ impl Oti {
     ///
     pub fn new_reed_solomon_rs28_under_specified(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u16,
+        maximum_source_block_length: u32,
         max_number_of_parity_symbols: u16,
     ) -> Result<Oti> {
         let encoding_block_length: usize =
@@ -377,7 +377,7 @@ impl Oti {
     ///
     pub fn new_raptorq(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u16,
+        maximum_source_block_length: u32,
         max_number_of_parity_symbols: u16,
         sub_blocks_length: u16,
         symbol_alignment: u8,
@@ -395,7 +395,8 @@ impl Oti {
             encoding_symbol_length,
             max_number_of_parity_symbols: max_number_of_parity_symbols as u32,
             scheme_specific: Some(SchemeSpecific::RaptorQ(RaptorQSchemeSpecific {
-                source_blocks_length: 0,
+                // symbol_count: Encoder::source_blocks && Decoder::source_blocks
+                source_blocks_length:1, // The number of source_blocks
                 sub_blocks_length,
                 symbol_alignment,
             })),
@@ -439,7 +440,7 @@ impl Oti {
     ///
     pub fn new_raptor(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u16,
+        maximum_source_block_length: u32,
         max_number_of_parity_symbols: u16,
         sub_blocks_length: u8,
         symbol_alignment: u8,

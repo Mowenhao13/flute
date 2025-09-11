@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc, time::SystemTime};
 pub struct ObjectWriterBufferBuilder {
     /// List of all objects received
     pub objects: RefCell<Vec<Rc<RefCell<ObjectWriterBuffer>>>>, // 所有接收对象的集合
-    /// True when MD5 check is enabled 
+    /// True when MD5 check is enabled
     pub enable_md5_check: bool, // 是否启用MD5校验
 }
 
@@ -18,7 +18,7 @@ pub struct ObjectWriterBufferBuilder {
 ///
 #[derive(Debug)]
 struct ObjectWriterBufferWrapper {
-    inner: Rc<RefCell<ObjectWriterBuffer>>, 
+    inner: Rc<RefCell<ObjectWriterBuffer>>,
     enable_md5_check: bool,
 }
 
@@ -37,6 +37,9 @@ pub struct ObjectWriterBuffer {
     pub start_time: SystemTime, // 开始接收时间
     /// Time when the object reception ended
     pub end_time: Option<SystemTime>, // 结束接收时间
+    /// Total number of bytes written to the buffer
+    /// Used for tracking progress and debugging transmission issues
+    pub bytes_written: usize,
 }
 
 impl ObjectWriterBufferBuilder {
@@ -58,20 +61,26 @@ impl Default for ObjectWriterBufferBuilder {
 impl ObjectWriterBuilder for ObjectWriterBufferBuilder {
     fn new_object_writer(
         &self,
-        _endpoint: &UDPEndpoint, // 忽略网络端点信息
-        _tsi: &u64, // 忽略传输会话ID
-        _toi: &u128, // 忽略传输对象ID  
-        meta: &ObjectMetadata, // 对象元数据
+        _endpoint: &UDPEndpoint,    // 忽略网络端点信息
+        _tsi: &u64,                 // 忽略传输会话ID
+        _toi: &u128,                // 忽略传输对象ID
+        meta: &ObjectMetadata,      // 对象元数据
         now: std::time::SystemTime, // 当前时间
     ) -> ObjectWriterBuilderResult {
         let obj = Rc::new(RefCell::new(ObjectWriterBuffer {
-            complete: false,      // 初始状态：未完成
-            error: false,         // 初始状态：无错误
-            data: Vec::new(),     // 空数据缓冲区
-            meta: meta.clone(),   // 克隆元数据
-            start_time: now,      // 记录开始时间
-            end_time: None        // 结束时间未设置
+            complete: false,    // 初始状态：未完成
+            error: false,       // 初始状态：无错误
+            data: Vec::new(),   // 空数据缓冲区
+            meta: meta.clone(), // 克隆元数据
+            start_time: now,    // 记录开始时间
+            end_time: None,     // 结束时间未设置
+            bytes_written: 0,   // 初始化写入字节数
         }));
+
+        log::debug!(
+            "Created new buffer writer for object: {:?}",
+            meta.content_location
+        );
 
         // 创建包装器
         let obj_wrapper = Box::new(ObjectWriterBufferWrapper {
@@ -114,36 +123,78 @@ impl ObjectWriterBuilder for ObjectWriterBufferBuilder {
 impl ObjectWriter for ObjectWriterBufferWrapper {
     // 空操作，内存写入不需要预处理
     fn open(&self, _now: SystemTime) -> Result<()> {
+        log::debug!(
+            "Opening buffer writer for object: {:?}",
+            self.inner.borrow().meta.content_location
+        );
         Ok(())
     }
 
     // 写入数据到内存缓冲区
+    // fn write(&self, _sbn: u32, data: &[u8], _now: SystemTime) -> Result<()> {
+    //     let mut inner = self.inner.borrow_mut();
+    //     inner.data.extend(data);
+    //     Ok(())
+    // }
     fn write(&self, _sbn: u32, data: &[u8], _now: SystemTime) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         inner.data.extend(data);
+        inner.bytes_written += data.len();
+
+        // 定期记录写入进度
+        if inner.bytes_written % (10 * 1024 * 1024) == 0 {
+            // 每10MB记录一次
+            log::debug!(
+                "Buffer write progress: {} MB for {:?}",
+                inner.bytes_written / (1024 * 1024),
+                inner.meta.content_location
+            );
+        }
+
         Ok(())
     }
 
     // 标记对象接收完成
+    // fn complete(&self, now: SystemTime) {
+    //     let mut inner = self.inner.borrow_mut();
+    //     log::info!("Object complete !");
+    //     inner.complete = true;
+    //     inner.end_time = Some(now);
+    // }
     fn complete(&self, now: SystemTime) {
         let mut inner = self.inner.borrow_mut();
-        log::info!("Object complete !");
+        log::info!("Object complete! Size: {} bytes for {:?}", 
+                   inner.bytes_written, inner.meta.content_location);
         inner.complete = true;
         inner.end_time = Some(now);
     }
 
     // 标记错误状态
+    // fn error(&self, now: SystemTime) {
+    //     let mut inner = self.inner.borrow_mut();
+    //     log::error!("Object received with error");
+    //     inner.error = true;
+    //     inner.end_time = Some(now);
+    // }
     fn error(&self, now: SystemTime) {
         let mut inner = self.inner.borrow_mut();
-        log::error!("Object received with error");
+        log::error!("Object received with error! Bytes written: {} for {:?}", 
+                    inner.bytes_written, inner.meta.content_location);
         inner.error = true;
         inner.end_time = Some(now);
     }
 
     // 中断处理（与错误处理相同）
+    // fn interrupted(&self, now: SystemTime) {
+    //     let mut inner = self.inner.borrow_mut();
+    //     log::error!("Object reception interrupted");
+    //     inner.error = true;
+    //     inner.end_time = Some(now);
+    // }
     fn interrupted(&self, now: SystemTime) {
         let mut inner = self.inner.borrow_mut();
-        log::error!("Object reception interrupted");
+        log::error!("Object reception interrupted! Bytes written: {} for {:?}", 
+                    inner.bytes_written, inner.meta.content_location);
         inner.error = true;
         inner.end_time = Some(now);
     }
