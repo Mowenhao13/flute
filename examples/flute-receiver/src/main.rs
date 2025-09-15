@@ -331,7 +331,7 @@ fn main() {
     std::env::set_var("RUST_LOG", "info");
     env_logger::builder().try_init().ok();
 
-    let config_path = Path::new("/home/halllo/flute-main/examples/config/config_1024mb_raptorq.yaml");
+    let config_path = Path::new("/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq.yaml");
     let config = match load_config(&config_path) {
         Ok(cfg) => {
             log::info!("Using configuration file: {}", config_path.display());

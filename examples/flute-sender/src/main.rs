@@ -165,11 +165,12 @@ fn load_config(config_path: &Path) -> Result<AppConfig, Box<dyn std::error::Erro
 }
 
 fn main() {
+
     std::env::set_var("RUST_LOG", "info");
     env_logger::builder().try_init().ok();
 
     let config_path =
-        Path::new("/home/halllo/flute-main/examples/config/config_1024mb_raptorq.yaml");
+        Path::new("/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq.yaml");
     let config = match load_config(&config_path) {
         Ok(cfg) => {
             log::info!("Using configuration file: {}", config_path.display());
@@ -184,6 +185,19 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    // 计算所有文件的总原始大小
+    let total_file_size: usize = config.sender.files.iter()
+        .map(|f| {
+            fs::metadata(&f.path)
+                .map(|m| m.len() as usize)
+                .unwrap_or(0)
+        })
+        .sum();
+
+    log::info!("Total file size to transmit: {} bytes ({} MB)",
+    total_file_size,
+    total_file_size as f64 / (1024.0 * 1024.0));
 
     let endpoint = UDPEndpoint::new(
         None,
@@ -368,17 +382,25 @@ fn main() {
 
     // 传输完成后的详细统计
     let total_time = start_time.elapsed();
-    let total_mb = total_bytes_sent as f64 / (1024.0 * 1024.0);
-    let average_rate_mbps = (total_bytes_sent as f64 * 8.0) / total_time.as_secs_f64() / 1_000_000.0;
+    let total_mb_sent = total_bytes_sent as f64 / (1024.0 * 1024.0);
+    let total_mb_recv = total_file_size as f64 / (1024.0 * 1024.0);
+
+    // 总共传输文件大小除以用时
+    let average_rate_mbps_sender = (total_bytes_sent as f64 * 8.0) / total_time.as_secs_f64() / 1_000_000.0;
+    // 原始文件大小除以用时
+    let average_rate_mbps_receiver = (total_file_size as f64 * 8.0) / total_time.as_secs_f64() / 1_000_000.0;
 
     log::info!("==========================================");
     log::info!("FILE TRANSFER COMPLETED");
     log::info!("==========================================");
     log::info!("Total time: {:.2} seconds", total_time.as_secs_f64());
     log::info!("Total packets: {}", sent_packets);
-    log::info!("Total data: {:.2} MB", total_mb);
-    log::info!("Average rate: {:.2} Mbps", average_rate_mbps);
-    log::info!("Average rate: {:.2} MB/s", average_rate_mbps / 8.0);
+    log::info!("Total data sent: {:.2} MB", total_mb_sent);
+    log::info!("Total data received: {:.2} MB", total_mb_recv);
+    log::info!("Average rate for sender: {:.2} Mbps", average_rate_mbps_sender);
+    log::info!("Average rate for sender: {:.2} MB/s", average_rate_mbps_sender / 8.0);
+    log::info!("Average rate for receiver: {:.2} Mbps", average_rate_mbps_receiver);
+    log::info!("Average rate for receiver: {:.2} MB/s", average_rate_mbps_receiver / 8.0);
     log::info!("Packet rate: {:.2} packets/second", 
                sent_packets as f64 / total_time.as_secs_f64());
     log::info!("==========================================");
