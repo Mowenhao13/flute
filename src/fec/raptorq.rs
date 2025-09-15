@@ -29,14 +29,14 @@ impl RaptorQEncoder {
         encoding_symbol_length: usize,
         scheme: &RaptorQSchemeSpecific,
     ) -> Self {
-        info!("Creating new RaptorQ encoder with parameters:");
-        info!("- Source symbols: {}", nb_source_symbols);
-        info!("- Parity symbols: {}", nb_parity_symbols);
-        info!("- Symbol length: {} bytes", encoding_symbol_length);
-        info!("- Scheme params: {:?}", scheme); // 详细参数用debug级别
+        // info!("Creating new RaptorQ encoder with parameters:");
+        // info!("- Source symbols: {}", nb_source_symbols);
+        // info!("- Parity symbols: {}", nb_parity_symbols);
+        // info!("- Symbol length: {} bytes", encoding_symbol_length);
+        // info!("- Scheme params: {:?}", scheme);
 
         let total_data_length = (nb_source_symbols * encoding_symbol_length) as u64;
-        info!("Calculated total data length: {} bytes", total_data_length);
+        // info!("Calculated total data length: {} bytes", total_data_length);
 
         let config = raptorq::ObjectTransmissionInformation::new(
             total_data_length,
@@ -46,7 +46,7 @@ impl RaptorQEncoder {
             scheme.symbol_alignment,
         );
 
-        info!("Final encoder configuration: {:?}", config);
+        // info!("Final encoder configuration: {:?}", config);
 
         RaptorQEncoder {
             nb_parity_symbols,

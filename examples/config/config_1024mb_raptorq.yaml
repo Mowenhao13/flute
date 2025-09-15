@@ -25,7 +25,7 @@ sender:
     progress_interval: 100  # 更少日志
 
   files:
-    - path: "/home/Halllo/Projects/flute/examples/flute-sender/src/files_send/test_100mb.bin"
+    - path: "/home/Halllo/Projects/flute/examples/flute-sender/src/files_send/test_1024mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
