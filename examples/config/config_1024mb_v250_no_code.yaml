@@ -10,11 +10,11 @@ sender:
 
   fec:
     type: "no_code"
-    symbol_size: 16384       # 改为16KB符号大小
-    source_symbols: 6400     # 100MB/16KB ≈ 6400
-    repair_symbols: 0
-    encoding_symbol_id_length: 4
-    maximum_source_block_length: 256
+    encoding_symbol_length: 20000
+    max_number_of_parity_symbols: 4
+    maximum_source_block_length: 60
+    symbol_alignment: 1
+    sub_blocks_length: 1
 
   flute:
     tsi: 1
@@ -50,5 +50,3 @@ receiver:
     cleanup_interval: 2000   # 减少清理频率
     log_interval: 500       # 减少日志频率
     max_memory_mb: 2048      # 增大到2GB内存限制
-    max_retries: 5           # 新增：最大重试次数
-    retry_delay_ms: 200      # 新增：重试延迟200ms

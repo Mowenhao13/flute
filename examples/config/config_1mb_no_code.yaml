@@ -9,19 +9,11 @@ sender:
 
   fec:
     type: "no_code"
-    symbol_size: 8192
-    source_symbols: 128
-    repair_symbols: 0
-    encoding_symbol_id_length: 4
-    maximum_source_block_length: 64
-    
-    # Reed Solomon 专用参数
-    m: 8
-    g: 1
-    
-    # Raptor/RaptorQ 专用参数
+    encoding_symbol_length: 20000
+    max_number_of_parity_symbols: 4
+    maximum_source_block_length: 60
+    symbol_alignment: 1
     sub_blocks_length: 1
-    symbol_alignment: 4
 
   flute:
     tsi: 1
@@ -53,6 +45,4 @@ receiver:
     cleanup_interval: 100    # 每100个包清理一次
     log_interval: 50         # 每50个包记录日志
     max_memory_mb: 256       # 最大内存256MB
-    max_retries: 5           # 新增：最大重试次数
-    retry_delay_ms: 200      # 新增：重试延迟200ms
-    keep_partial_files: true # 新增：保留部分接收的文件
+
