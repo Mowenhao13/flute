@@ -521,7 +521,6 @@ struct SenderFecConfig {
     fec_type: String,
     encoding_symbol_length: u16,
     max_number_of_parity_symbols: u32,
-    encoding_symbol_id_length: u8,
     maximum_source_block_length: u32,
     symbol_alignment: u8,
     sub_blocks_length: u16,
@@ -558,8 +557,25 @@ fn main() {
     std::env::set_var("RUST_LOG", "info");
     env_logger::builder().try_init().ok();
 
-    let config_path =
-        Path::new("/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq.yaml");
+    let choice = 5;  // 这里手动改数字就行
+
+    // 配置文件列表
+    let configs = vec![
+        "/home/Halllo/Projects/flute/examples/config/config_1mb_no_code.yaml",
+        "/home/Halllo/Projects/flute/examples/config/config_1024mb_no_code.yaml",
+        "/home/Halllo/Projects/flute/examples/config/config_1024mb_raptor.yaml",
+        "/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq.yaml",
+        "/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28.yaml",
+        "/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28_under_specified.yaml",
+    ];
+
+    if choice < 1 || choice > configs.len() {
+        eprintln!("Invalid choice {}, must be 1..{}", choice, configs.len());
+        std::process::exit(1);
+    }
+
+    let config_path = Path::new(configs[choice - 1]);
+
     let config = match load_config(&config_path) {
         Ok(cfg) => {
             log::info!("Using configuration file: {}", config_path.display());
@@ -595,11 +611,50 @@ fn main() {
     );
 
 
-    let udp_socket = UdpSocket::bind(format!(
+    // 更安全且带日志的绑定与 connect
+    let bind_addr = format!(
         "{}:{}",
         config.sender.network.bind_address, config.sender.network.bind_port
-    ))
-        .unwrap();
+    );
+    log::info!("Trying to bind UDP socket to {}", bind_addr);
+
+    let udp_socket = match UdpSocket::bind(&bind_addr) {
+        Ok(s) => {
+            log::info!("Successfully bound UDP socket to {}", bind_addr);
+            match s.local_addr() {
+                Ok(local) => log::info!("Socket local_addr() -> {}", local),
+                Err(e) => log::warn!("Could not get socket local_addr(): {}", e),
+            }
+            // 非阻塞 / 其他 socket 设置可以在这里添加，例如：
+            // s.set_nonblocking(true).ok();
+            s
+        }
+        Err(e) => {
+            log::error!("Failed to bind UDP socket to {}: {}", bind_addr, e);
+            // 根据你的需求可以改成 return Err(...) 或者重试逻辑
+            std::process::exit(1);
+        }
+    };
+
+    // 打印将要连接的目的地址（目标必须包含端口，例如 "192.168.1.102:12345"）
+    log::info!("Will connect UDP socket to destination: {}", config.sender.network.destination);
+
+    match udp_socket.connect(&config.sender.network.destination) {
+        Ok(_) => {
+            match udp_socket.peer_addr() {
+                Ok(peer) => log::info!("UDP socket connected to {}", peer),
+                Err(_) => log::info!("UDP socket connected (peer addr not available)"),
+            }
+        }
+        Err(e) => {
+            log::error!(
+                "Failed to connect UDP socket to {}: {}",
+                config.sender.network.destination,
+                e
+            );
+            std::process::exit(1);
+        }
+    }
 
     let tsi = config.sender.flute.tsi;
 
@@ -609,7 +664,7 @@ fn main() {
     let max_number_of_parity_symbols: u16 = config.sender.fec.max_number_of_parity_symbols.try_into().unwrap();
     let encoding_symbol_length: u16 = config.sender.fec.encoding_symbol_length.try_into().unwrap();
     // let source_symbols: u16 = config.sender.fec.source_symbols.try_into().unwrap();
-    let encoding_symbol_id_length = config.sender.fec.encoding_symbol_id_length;
+    // let encoding_symbol_id_length = config.sender.fec.encoding_symbol_id_length;
     let max_source_block_length = config.sender.fec.maximum_source_block_length;
     let symbol_alignment = config.sender.fec.symbol_alignment;
     let sub_blocks_length = config.sender.fec.sub_blocks_length;
@@ -630,7 +685,7 @@ fn main() {
             encoding_symbol_length,
             max_source_block_length,
             max_number_of_parity_symbols,
-            encoding_symbol_id_length,
+            sub_blocks_length as u8,
             symbol_alignment, // 默认对齐参数
         ).expect("Invalid Raptor parameters"),
         "raptorq" => Oti::new_raptorq(
@@ -644,8 +699,9 @@ fn main() {
     };
 
     log::info!("Using FEC: {:?}", oti.fec_encoding_id);
-    log::info!("Symbol size: {} bytes", oti.encoding_symbol_length);
+    log::info!("Encoding symbol length: {} bytes", oti.encoding_symbol_length);
     log::info!("Max source block length: {}", oti.maximum_source_block_length);
+    log::info!("Sub blocks length: {}", sub_blocks_length);
     log::info!("Max parity symbols: {}", oti.max_number_of_parity_symbols);
     log::info!("Max symbol alignment: {}", oti.max_number_of_parity_symbols);
     let mut sender_config = SenderConfig::default();
@@ -689,84 +745,83 @@ fn main() {
 
     log::info!("Starting file transmission...");
     let start_time = Instant::now();
-    let mut total_bytes_sent = 0;
+    let mut total_bytes_sent: u64 = 0;
+    let mut sent_packets: u64 = 0;
 
     let max_rate_kbps = config.sender.max_rate_kbps.unwrap_or(0);
-    let send_interval = config.sender.send_interval_micros.unwrap_or(2);
-
-    // 计算每个包的理论发送时间
-    let packet_size = encoding_symbol_length as f64; // 符号大小（字节）
-    let packets_per_second = if max_rate_kbps > 0 {
-        // 计算每秒允许发送的包数
-        let bits_per_second = (max_rate_kbps as f64) * 1000.0;
-        let bytes_per_second = bits_per_second / 8.0;
-        (bytes_per_second / packet_size) as u64
+    let bytes_per_sec = if max_rate_kbps > 0 {
+        (max_rate_kbps as f64 * 1000.0 / 8.0) // kbps -> Bps
     } else {
-        // 无限制时使用配置的间隔
-        1_000_000 / send_interval // 转换为每秒包数
+        f64::INFINITY // 不限速
     };
 
-    let min_packet_interval = if max_rate_kbps > 0 {
-        Duration::from_micros(1_000_000 / packets_per_second)
-    } else {
-        Duration::from_micros(send_interval)
-    };
+    log::info!("Rate control: max_rate_kbps = {} ({} B/s)",
+           max_rate_kbps, if bytes_per_sec.is_finite() { bytes_per_sec as u64 } else { 0 });
 
-    log::info!(
-        "Rate control: max_rate={}kbps, interval={:?}",
-        max_rate_kbps,
-        min_packet_interval
-    );
+    // 用“下一次应发送时间”做节拍
+    let mut next_send_at = Instant::now();
 
-    let mut last_send_time = Instant::now();
-    let mut sent_packets = 0;
+    // 日志辅助
     let mut last_log_time = Instant::now();
-    let log_interval = Duration::from_secs(1);
-    let mut bytes_sent_since_last_log = 0;
+    let mut bytes_since_log: u64 = 0;
 
     while let Some(pkt) = sender.read(SystemTime::now()) {
-        // 速率控制：确保最小发送间隔
-        let elapsed = last_send_time.elapsed();
-        if elapsed < min_packet_interval {
-            std::thread::sleep(min_packet_interval - elapsed);
+        // 仅在限速开启时进行节拍控制
+        if bytes_per_sec.is_finite() {
+            let pkt_len = pkt.len() as f64;
+
+            // 这一个包在目标速率下“应当占用”的时间片
+            let interval = Duration::from_secs_f64(pkt_len / bytes_per_sec);
+
+            // 若当前时间尚未到达下一次发送时刻，则等待
+            let now = Instant::now();
+            if now < next_send_at {
+                std::thread::sleep(next_send_at - now);
+            }
+
+            // 发送成功后，推进下一次发送时刻
+            next_send_at += interval;
+
+            // 若由于调度/日志等原因漂移过大，进行重校准，避免越走越偏
+            let drift = Instant::now().saturating_duration_since(next_send_at);
+            if drift > Duration::from_millis(200) {
+                next_send_at = Instant::now() + interval;
+            }
         }
 
         match udp_socket.send(&pkt) {
             Ok(bytes_sent) => {
-                total_bytes_sent += bytes_sent;
-                bytes_sent_since_last_log += bytes_sent;
+                total_bytes_sent += bytes_sent as u64;
+                bytes_since_log += bytes_sent as u64;
                 sent_packets += 1;
-                last_send_time = Instant::now();
 
-                if sent_packets % config.sender.logging.progress_interval == 0 {
-                    // log::info!("Sent {} packets", sent_packets);
-                    let current_time = Instant::now();
-                    let elapsed_since_last_log = current_time.duration_since(last_log_time).as_secs_f64();
+                // 按进度间隔打印统计
+                if sent_packets % config.sender.logging.progress_interval as u64 == 0 {
+                    let now = Instant::now();
+                    let dt = now.duration_since(last_log_time).as_secs_f64();
+                    if dt > 0.0 {
+                        let inst_mbps = (bytes_since_log as f64 * 8.0) / dt / 1_000_000.0;
+                        let avg_mbps = (total_bytes_sent as f64 * 8.0)
+                            / now.duration_since(start_time).as_secs_f64() / 1_000_000.0;
 
-                    // 计算瞬时速率（过去100个包的速率）
-                    let instant_rate_mbps = (bytes_sent_since_last_log as f64 * 8.0) / elapsed_since_last_log / 1_000_000.0;
-
-                    // 计算全局平均速率
-                    let total_elapsed = current_time.duration_since(start_time).as_secs_f64();
-                    let average_rate_mbps = (total_bytes_sent as f64 * 8.0) / total_elapsed / 1_000_000.0;
-
-                    log::info!(
-                        "Progress: {} packets ({} MB) | Instant: {:.2} Mbps | Avg: {:.2} Mbps | Elapsed: {:.2}s",
+                        log::info!(
+                        "Progress: {} pkts, {} MB | Instant: {:.2} Mbps | Avg: {:.2} Mbps",
                         sent_packets,
                         total_bytes_sent / (1024 * 1024),
-                        instant_rate_mbps,
-                        average_rate_mbps,
-                        total_elapsed
+                        inst_mbps,
+                        avg_mbps
                     );
+                    }
+                    last_log_time = now;
+                    bytes_since_log = 0;
                 }
             }
             Err(e) => {
                 log::error!("Failed to send packet: {}", e);
             }
         }
-        std::thread::sleep(std::time::Duration::from_micros(
-            config.sender.network.send_interval_micros,
-        ));
+
+        // ✅ 这里不要再做额外的 sleep（删除你原来的 network.send_interval_micros 睡眠）
     }
 
     // 传输完成后的详细统计

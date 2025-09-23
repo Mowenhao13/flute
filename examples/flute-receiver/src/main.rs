@@ -275,7 +275,7 @@ use flute::{
 };
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{SystemTime, Duration};
 
@@ -334,7 +334,37 @@ fn main() {
     std::env::set_var("RUST_LOG", "info");
     env_logger::builder().try_init().ok();
 
-    let config_path = Path::new("/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq.yaml");
+    // let config_path = Path::new("/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28.yaml");
+
+    // exe 同目录下的 config.yaml
+    // 选择配置编号 (1 ~ 6)
+    let choice = 6;  // 修改这个数字即可选择配置文件
+
+    // 配置文件名数组（和 exe 在同一目录下）
+    let config_files = [
+        "1mb_no_code.yaml",
+        "1024mb_no_code.yaml",
+        "1024mb_raptor.yaml",
+        "1024mb_raptorq.yaml",
+        "1024mb_rs28.yaml",
+        "1024mb_rs28_us.yaml",
+    ];
+
+    if choice < 1 || choice > config_files.len() {
+        eprintln!("Invalid choice {} (must be 1..{})", choice, config_files.len());
+        std::process::exit(1);
+    }
+
+    // exe 所在目录
+    let exe_dir: PathBuf = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
+    // 拼接路径
+    let config_path = exe_dir.join(config_files[choice - 1]);
+
     let config = match load_config(&config_path) {
         Ok(cfg) => {
             log::info!("Using configuration file: {}", config_path.display());
