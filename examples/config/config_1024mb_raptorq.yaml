@@ -3,8 +3,8 @@
 # Rate under: unlimited Mbits/sec
 sender:
   network:
-    destination: "192.168.100.2:3500"  # 使用 veth-receiver 的 IP
-    bind_address: "192.168.100.1"
+    destination: "192.168.1.102:3500"  # win11-IP
+    bind_address: "192.168.1.103" # linux-IP
     bind_port: 0
     send_interval_micros: 1  
 
@@ -12,7 +12,6 @@ sender:
     type: "raptorq"
     encoding_symbol_length: 38912
     max_number_of_parity_symbols: 100
-    encoding_symbol_id_length: 1 # raptorq无关参数
     maximum_source_block_length: 120
     symbol_alignment: 8
     sub_blocks_length: 1
@@ -36,15 +35,15 @@ sender:
 
 receiver:
   network:
-    bind_address: "192.168.100.2"  # 绑定到 veth-receiver
+    bind_address: "192.168.1.102"  # win11-IP
     port: 3500
 
   storage:
-    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/src/files_save"
-    enable_md5_check: false
+    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
+    enable_md5_check: true
 
   logging:
-    progress_interval: 500
+    progress_interval: 100
 
   advanced:
     buffer_size: 8388608     # 4MB缓冲区

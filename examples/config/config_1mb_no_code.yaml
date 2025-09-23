@@ -2,15 +2,15 @@
 # FLUTE 1MB文件传输专用配置
 sender:
   network:
-    destination: "127.0.0.1:3500"
-    bind_address: "0.0.0.0"
+    destination: "192.168.1.102:3500"  # win11-IP
+    bind_address: "192.168.1.103" # linux-IP
     bind_port: 0
-    send_interval_micros: 5
+    send_interval_micros: 80
 
   fec:
     type: "no_code"
-    encoding_symbol_length: 20000
-    max_number_of_parity_symbols: 4
+    encoding_symbol_length: 1400
+    max_number_of_parity_symbols: 0
     maximum_source_block_length: 60
     symbol_alignment: 1
     sub_blocks_length: 1
@@ -23,25 +23,25 @@ sender:
     progress_interval: 500
 
   files:
-    - path: "/home/halllo/flute-main/examples/flute-sender/src/files_send/test_1mb.bin"
+    - path: "/home/Halllo/Projects/flute/examples/flute-sender/src/files_send/test_1mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
 
 receiver:
   network:
-    bind_address: "0.0.0.0"
+    bind_address: "0.0.0.0"  # win11-IP
     port: 3500
 
   storage:
-    destination_dir: "/home/halllo/flute-main/examples/flute-receiver/src/files_save"
+    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
     enable_md5_check: true
 
   logging:
-    progress_interval: 50
+    progress_interval: 10
 
   advanced:
-    buffer_size: 131072      # 128KB
+    buffer_size: 1048576     # 1MB缓冲区，避免高流量丢包
     cleanup_interval: 100    # 每100个包清理一次
     log_interval: 50         # 每50个包记录日志
     max_memory_mb: 256       # 最大内存256MB

@@ -3,8 +3,8 @@
 # Rate under: unlimited Mbits/sec
 sender:
   network:
-    destination: "192.168.100.2:3500"  # 使用 veth-receiver 的 IP
-    bind_address: "192.168.100.1"
+    destination: "192.168.1.102:3500"  # win11-IP
+    bind_address: "192.168.1.103" # linux-IP
     bind_port: 0
     send_interval_micros: 1
 
@@ -12,7 +12,6 @@ sender:
     type: "raptor"
     encoding_symbol_length: 20000
     max_number_of_parity_symbols: 4
-    encoding_symbol_id_length: 4
     maximum_source_block_length: 60
     symbol_alignment: 1
     sub_blocks_length: 1
@@ -25,7 +24,7 @@ sender:
     progress_interval: 100  # 更少日志
 
   files:
-      path: "/home/Halllo/Projects/flute/examples/flute-sender/src/files_send/test_1024mb.bin"
+    - path: "/home/Halllo/Projects/flute/examples/flute-sender/src/files_send/test_1024mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
@@ -36,20 +35,18 @@ sender:
 
 receiver:
   network:
-    bind_address: "192.168.100.2"  # 绑定到 veth-receiver
+    bind_address: "192.168.1.102"  # win11-IP
     port: 3500
 
   storage:
-    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/src/files_save"
+    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
     enable_md5_check: true
 
   logging:
-    progress_interval: 500
+    progress_interval: 100
 
   advanced:
     buffer_size: 8388608     # 4MB缓冲区
     cleanup_interval: 2000   # 减少清理频率
     log_interval: 500       # 减少日志频率
     max_memory_mb: 8192      # 8GB内存限制
-    max_retries: 5           # 新增：最大重试次数
-    retry_delay_ms: 200      # 新增：重试延迟200ms
