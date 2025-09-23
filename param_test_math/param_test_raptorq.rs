@@ -1,4 +1,4 @@
-// param_test.rs
+// param_test_raptorq.rs
 use num_integer::{div_ceil, div_floor};
 // // KB, MB 定义
 const KB = 1024;
