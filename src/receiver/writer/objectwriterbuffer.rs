@@ -8,9 +8,9 @@ use std::{cell::RefCell, rc::Rc, time::SystemTime};
 #[derive(Debug)]
 pub struct ObjectWriterBufferBuilder {
     /// List of all objects received
-    pub objects: RefCell<Vec<Rc<RefCell<ObjectWriterBuffer>>>>, // 所有接收对象的集合
+    pub objects: RefCell<Vec<Rc<RefCell<ObjectWriterBuffer>>>>,
     /// True when MD5 check is enabled
-    pub enable_md5_check: bool, // 是否启用MD5校验
+    pub enable_md5_check: bool,
 }
 
 ///
@@ -26,20 +26,17 @@ struct ObjectWriterBufferWrapper {
 /// Object stored in a buffer
 pub struct ObjectWriterBuffer {
     /// true when the object is fully received
-    pub complete: bool, // 对象是否接收完成
+    pub complete: bool,
     /// true when an error occured during the reception
-    pub error: bool, // 是否发生错误
+    pub error: bool,
     /// buffer containing the data of the object
-    pub data: Vec<u8>, // 存储实际数据的缓冲区
+    pub data: Vec<u8>,
     /// Metadata of the object
-    pub meta: ObjectMetadata, // 对象元数据
+    pub meta: ObjectMetadata,
     /// Time when the object reception started
-    pub start_time: SystemTime, // 开始接收时间
+    pub start_time: SystemTime,
     /// Time when the object reception ended
-    pub end_time: Option<SystemTime>, // 结束接收时间
-    /// Total number of bytes written to the buffer
-    /// Used for tracking progress and debugging transmission issues
-    pub bytes_written: usize,
+    pub end_time: Option<SystemTime>,
 }
 
 impl ObjectWriterBufferBuilder {
@@ -61,37 +58,26 @@ impl Default for ObjectWriterBufferBuilder {
 impl ObjectWriterBuilder for ObjectWriterBufferBuilder {
     fn new_object_writer(
         &self,
-        _endpoint: &UDPEndpoint,    // 忽略网络端点信息
-        _tsi: &u64,                 // 忽略传输会话ID
-        _toi: &u128,                // 忽略传输对象ID
-        meta: &ObjectMetadata,      // 对象元数据
-        now: std::time::SystemTime, // 当前时间
+        _endpoint: &UDPEndpoint,
+        _tsi: &u64,
+        _toi: &u128,
+        meta: &ObjectMetadata,
+        now: std::time::SystemTime,
     ) -> ObjectWriterBuilderResult {
         let obj = Rc::new(RefCell::new(ObjectWriterBuffer {
-            complete: false,    // 初始状态：未完成
-            error: false,       // 初始状态：无错误
-            data: Vec::new(),   // 空数据缓冲区
-            meta: meta.clone(), // 克隆元数据
-            start_time: now,    // 记录开始时间
-            end_time: None,     // 结束时间未设置
-            bytes_written: 0,   // 初始化写入字节数
+            complete: false,
+            error: false,
+            data: Vec::new(),
+            meta: meta.clone(),
+            start_time: now,
+            end_time: None,
         }));
 
-        log::debug!(
-            "Created new buffer writer for object: {:?}",
-            meta.content_location
-        );
-
-        // 创建包装器
         let obj_wrapper = Box::new(ObjectWriterBufferWrapper {
             inner: obj.clone(),
             enable_md5_check: self.enable_md5_check,
         });
-
-        // 将对象加入管理列表
         self.objects.borrow_mut().push(obj);
-
-        // 返回包装器
         ObjectWriterBuilderResult::StoreObject(obj_wrapper)
     }
 
@@ -119,87 +105,38 @@ impl ObjectWriterBuilder for ObjectWriterBufferBuilder {
     }
 }
 
-// 实际执行内存写入操作的实现
 impl ObjectWriter for ObjectWriterBufferWrapper {
-    // 空操作，内存写入不需要预处理
     fn open(&self, _now: SystemTime) -> Result<()> {
-        log::debug!(
-            "Opening buffer writer for object: {:?}",
-            self.inner.borrow().meta.content_location
-        );
         Ok(())
     }
 
-    // 写入数据到内存缓冲区
-    // fn write(&self, _sbn: u32, data: &[u8], _now: SystemTime) -> Result<()> {
-    //     let mut inner = self.inner.borrow_mut();
-    //     inner.data.extend(data);
-    //     Ok(())
-    // }
     fn write(&self, _sbn: u32, data: &[u8], _now: SystemTime) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         inner.data.extend(data);
-        inner.bytes_written += data.len();
-
-        // 定期记录写入进度
-        if inner.bytes_written % (10 * 1024 * 1024) == 0 {
-            // 每10MB记录一次
-            log::debug!(
-                "Buffer write progress: {} MB for {:?}",
-                inner.bytes_written / (1024 * 1024),
-                inner.meta.content_location
-            );
-        }
-
         Ok(())
     }
 
-    // 标记对象接收完成
-    // fn complete(&self, now: SystemTime) {
-    //     let mut inner = self.inner.borrow_mut();
-    //     log::info!("Object complete !");
-    //     inner.complete = true;
-    //     inner.end_time = Some(now);
-    // }
     fn complete(&self, now: SystemTime) {
         let mut inner = self.inner.borrow_mut();
-        log::info!("Object complete! Size: {} bytes for {:?}", 
-                   inner.bytes_written, inner.meta.content_location);
+        log::info!("Object complete !");
         inner.complete = true;
         inner.end_time = Some(now);
     }
 
-    // 标记错误状态
-    // fn error(&self, now: SystemTime) {
-    //     let mut inner = self.inner.borrow_mut();
-    //     log::error!("Object received with error");
-    //     inner.error = true;
-    //     inner.end_time = Some(now);
-    // }
     fn error(&self, now: SystemTime) {
         let mut inner = self.inner.borrow_mut();
-        log::error!("Object received with error! Bytes written: {} for {:?}", 
-                    inner.bytes_written, inner.meta.content_location);
+        log::error!("Object received with error");
         inner.error = true;
         inner.end_time = Some(now);
     }
 
-    // 中断处理（与错误处理相同）
-    // fn interrupted(&self, now: SystemTime) {
-    //     let mut inner = self.inner.borrow_mut();
-    //     log::error!("Object reception interrupted");
-    //     inner.error = true;
-    //     inner.end_time = Some(now);
-    // }
     fn interrupted(&self, now: SystemTime) {
         let mut inner = self.inner.borrow_mut();
-        log::error!("Object reception interrupted! Bytes written: {} for {:?}", 
-                    inner.bytes_written, inner.meta.content_location);
+        log::error!("Object reception interrupted");
         inner.error = true;
         inner.end_time = Some(now);
     }
 
-    // 返回MD5检查配置
     fn enable_md5_check(&self) -> bool {
         self.enable_md5_check
     }

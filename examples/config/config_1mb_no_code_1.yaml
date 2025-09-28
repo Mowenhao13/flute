@@ -1,9 +1,9 @@
-# config_1mb_no_code.yaml
-# FLUTE 1MB文件传输专用配置
+# config_1mb_no_code_1.yaml
+# FLUTE 1MB文件传输专用配置 - 硬件测试版本
 sender:
   network:
-    destination: "192.168.100.2:3500"  # receiver IP
-    bind_address: "192.168.100.1" # sender IP
+    destination: "192.168.1.102:3500"  # win11-IP (接收端)
+    bind_address: "192.168.1.103" # linux-IP (发送端)
     bind_port: 0
     send_interval_micros: 80
 
@@ -30,12 +30,11 @@ sender:
 
 receiver:
   network:
-    bind_address: "192.168.100.2"  # receiver IP
+    bind_address: "192.168.1.102"  # win11-IP (接收端)
     port: 3500
 
   storage:
-    # destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
-    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/received_files"
+    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
     enable_md5_check: true
 
   logging:
@@ -46,4 +45,3 @@ receiver:
     cleanup_interval: 100    # 每100个包清理一次
     log_interval: 50         # 每50个包记录日志
     max_memory_mb: 256       # 最大内存256MB
-

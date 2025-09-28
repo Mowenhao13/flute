@@ -20,10 +20,10 @@ pub enum Cenc {
 #[repr(u8)]
 #[derive(Clone, Copy)]
 pub enum Ext {
-    Fdt = 192, // 文件描述表扩展
-    Fti = 64, // 文件传输信息扩展
-    Cenc = 193, // 内容编码扩展
-    Time = 2, // 时间扩展
+    Fdt = 192,
+    Fti = 64,
+    Cenc = 193,
+    Time = 2,
 }
 
 pub const TOI_FDT: u128 = 0;
@@ -32,23 +32,23 @@ pub const TOI_FDT: u128 = 0;
 #[derive(Clone, Debug)]
 pub struct LCTHeader {
     /// len
-    pub len: usize, // 头部长度(字节)
+    pub len: usize,
     /// cci
-    pub cci: u128, // 拥塞控制信息
+    pub cci: u128,
     /// TSI
-    pub tsi: u64, // 传输会话标识符
+    pub tsi: u64,
     /// TOI
-    pub toi: u128, // 传输对象标识符
+    pub toi: u128,
     /// cp
-    pub cp: u8, // 编解码器标识符
+    pub cp: u8,
     /// Close Object
-    pub close_object: bool, // 是否关闭对象
+    pub close_object: bool,
     /// Close Session
-    pub close_session: bool, // 是否关闭会话
-    /// Header ext offset 
-    pub header_ext_offset: u32, // 扩展头偏移量
+    pub close_session: bool,
+    /// Header ext offset
+    pub header_ext_offset: u32,
     /// LCT packet length
-    pub length: usize, // 数据包总长度
+    pub length: usize,
 }
 
 impl TryFrom<u8> for Cenc {
@@ -239,8 +239,6 @@ fn nb_bytes_64(n: u64, min: u32) -> u32 {
 /// * `codepoint`: An opaque identifier passed to the packet payload decoder to convey information on the codec being used for the packet payload.
 /// * `close_object`: Indicates whether termination of transmission of packets for an object is imminent.
 /// * `close_session`: Indicates whether termination of transmission of packets for the session is imminent.
-
-// LCT 头构建
 pub fn push_lct_header(
     data: &mut Vec<u8>,
     psi: u8,
@@ -251,12 +249,10 @@ pub fn push_lct_header(
     close_object: bool,
     close_session: bool,
 ) {
-    // 计算各字段长度
     let cci_size = nb_bytes_128(cci, 0);
     let tsi_size = nb_bytes_64(tsi, 2);
     let toi_size = nb_bytes_128(toi, 2);
 
-    // 构建标志位
     let h_tsi = (tsi_size & 2) >> 1; // Is TSI half-word ?
     let h_toi = (toi_size & 2) >> 1; // Is TOI half-word ?
 
@@ -277,12 +273,8 @@ pub fn push_lct_header(
         size if size <= 12 => 2,
         _ => 3,
     };
-
-    // 计算头部总长度
     let hdr_len: u8 = (2 + o + s + h + c) as u8;
     let v = 1;
-
-    // 构建头部第一个32位字 
     let lct_header: u32 = (codepoint as u32)
         | ((hdr_len as u32) << 8)
         | (b as u32) << 16
@@ -294,10 +286,7 @@ pub fn push_lct_header(
         | (c) << 26
         | (v as u32) << 28;
 
-    // 写入头部
     data.extend(lct_header.to_be_bytes());
-
-    // 写入各字段(CCI, TSI, TOI)
 
     // Insert CCI
     let cci_net = cci.to_be_bytes();
@@ -327,7 +316,6 @@ pub fn inc_hdr_len(data: &mut [u8], val: u8) {
     data[2] += val;
 }
 
-// LCT 头解析
 pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
     /*
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -347,7 +335,6 @@ pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      */
 
-    // 检查头部长度
     let len = data.get(2).map_or_else(
         || Err(FluteError::new("Fail to read lct header size")),
         |&v| Ok((v as usize) << 2),
@@ -361,7 +348,6 @@ pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
         )));
     }
 
-    // 解析标志位
     let cp = data[3];
     let flags1 = data[0];
     let flags2 = data[1];
@@ -373,8 +359,6 @@ pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
     let a = (flags2 >> 1) & 0x1;
     let b = flags2 & 0x1;
     let version = flags1 >> 4;
-
-    // 检查版本号
     if version != 1 && version != 2 {
         return Err(FluteError::new(format!(
             "FLUTE version {} is not supported",
@@ -382,7 +366,6 @@ pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
         )));
     }
 
-    // 计算各字段长度
     let cci_len = ((c + 1) as u32) << 2;
     let tsi_len = ((s as u32) << 2) + ((h as u32) << 1);
     let toi_len = ((o as u32) << 2) + ((h as u32) << 1);
@@ -405,7 +388,6 @@ pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
         return Err(FluteError::new("EXT offset outside LCT header"));
     }
 
-    // 提取各字段
     let mut cci: [u8; 16] = [0; 16]; // Store up to 128 bits
     let mut tsi: [u8; 8] = [0; 8]; // Store up to 64 bits
     let mut toi: [u8; 16] = [0; 16]; // Store up to 128 bits
@@ -445,9 +427,6 @@ pub fn parse_lct_header(data: &[u8]) -> Result<LCTHeader> {
 /// * `None`: If the extension is not found.
 /// * `Err`: If the packet is malformed.
 ///
-/// 
-
-// 扩展头处理
 pub fn get_ext<'a>(data: &'a [u8], lct: &LCTHeader, ext: u8) -> Result<Option<&'a [u8]>> {
     let mut lct_ext_ext = &data[(lct.header_ext_offset as usize)..lct.len];
     while lct_ext_ext.len() >= 4 {

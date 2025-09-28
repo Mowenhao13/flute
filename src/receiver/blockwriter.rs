@@ -14,14 +14,14 @@ use super::{
 };
 
 pub struct BlockWriter {
-    sbn: u32,                    // 当前处理的源块编号
-    bytes_left: usize,           // 剩余待写入字节数
-    content_length_left: Option<usize>, // 剩余内容长度(用于流控制)
-    cenc: lct::Cenc,             // 内容编码类型(Null/Zlib/Deflate/Gzip)
-    decoder: Option<Box<dyn Decompress>>, // 解压缩器(动态派发)
-    buffer: Vec<u8>,             // 解压缓冲区
-    md5_context: Option<md5::Context>, // MD5计算上下文
-    md5: Option<String>,         // 最终MD5校验值(base64编码)
+    sbn: u32,
+    bytes_left: usize,
+    content_length_left: Option<usize>,
+    cenc: lct::Cenc,
+    decoder: Option<Box<dyn Decompress>>,
+    buffer: Vec<u8>,
+    md5_context: Option<md5::Context>,
+    md5: Option<String>,
 }
 
 impl std::fmt::Debug for BlockWriter {
@@ -40,10 +40,10 @@ impl std::fmt::Debug for BlockWriter {
 
 impl BlockWriter {
     pub fn new(
-        transfer_length: usize,      // 总传输长度
-        content_length: Option<usize>, // 内容长度(可能为None)
-        cenc: lct::Cenc,            // 内容编码类型
-        md5: bool                   // 是否启用MD5校验
+        transfer_length: usize,
+        content_length: Option<usize>,
+        cenc: lct::Cenc,
+        md5: bool,
     ) -> BlockWriter {
         BlockWriter {
             sbn: 0,
@@ -68,21 +68,12 @@ impl BlockWriter {
         self.md5.as_deref()
     }
 
-    // 工作流程​​：
-    // 1.检查块编号是否匹配
-    // 2.从解码器获取原始数据
-    // 3.处理最后一个符号的可能截断
-    // 4.根据编码类型选择处理路径：
-        // •无编码：直接写入
-        // •有编码：先解压再写入
-    // 5.更新剩余字节数和当前块编号
-    // 6.如果完成，计算最终MD5值
     pub fn write(
         &mut self,
-        sbn: u32,                   // 源块编号
-        block: &BlockDecoder,       // 已解码的数据块
-        writer: &dyn ObjectWriter, // 目标写入器
-        now: SystemTime             // 当前时间
+        sbn: u32,
+        block: &BlockDecoder,
+        writer: &dyn ObjectWriter,
+        now: SystemTime,
     ) -> Result<bool> {
         if self.sbn != sbn {
             return Ok(false);
@@ -124,7 +115,6 @@ impl BlockWriter {
 
     fn init_decoder(&mut self, data: &[u8]) {
         debug_assert!(self.decoder.is_none());
-        // 根据cenc类型创建对应的解压器
         self.decoder = match self.cenc {
             lct::Cenc::Null => None,
             lct::Cenc::Zlib => Some(Box::new(DecompressZlib::new(data))),
@@ -134,7 +124,12 @@ impl BlockWriter {
         self.buffer.resize(data.len(), 0);
     }
 
-    fn write_pkt_cenc_null(&mut self, data: &[u8], writer: &dyn ObjectWriter, now: SystemTime) -> Result<()> {
+    fn write_pkt_cenc_null(
+        &mut self,
+        data: &[u8],
+        writer: &dyn ObjectWriter,
+        now: SystemTime,
+    ) -> Result<()> {
         if let Some(ctx) = self.md5_context.as_mut() {
             ctx.consume(data)
         }

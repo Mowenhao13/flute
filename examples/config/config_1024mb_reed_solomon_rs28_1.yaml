@@ -1,12 +1,10 @@
-# config_1024mb_reed_solomon_rs28.yaml
-# FLUTE 1024MB文件传输专用配置 (reed_soloon_rs28)
+# config_1024mb_reed_solomon_rs28_1.yaml
+# FLUTE 1024MB文件传输专用配置 (reed_soloon_rs28) - 硬件测试版本
 # Rate under: unlimited Mbits/sec
 sender:
   network:
-    # destination: "192.168.100.2:3500" # "192.168.1.102:3500"  # win11-IP
-    # bind_address: "192.168.100.1" # "192.168.1.103" # linux-IP
-    destination: "192.168.100.2:3500"  # receiver IP
-    bind_address: "192.168.100.1" # sender IP
+    destination: "192.168.1.102:3500"  # win11-IP (接收端)
+    bind_address: "192.168.1.103" # linux-IP (发送端)
     bind_port: 0
     send_interval_micros: 0
 
@@ -37,11 +35,11 @@ sender:
 
 receiver:
   network:
-    bind_address: "192.168.100.2"  # veth-receiver IP
+    bind_address: "192.168.1.102"  # win11-IP (接收端)
     port: 3500
 
   storage:
-    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/received_files"
+    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
     enable_md5_check: true
 
   logging:
@@ -52,4 +50,3 @@ receiver:
     cleanup_interval: 2000   # 减少清理频率
     log_interval: 500       # 减少日志频率
     max_memory_mb: 8192      # 8GB内存限制
-

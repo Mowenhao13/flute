@@ -3,19 +3,21 @@
 # Rate under: unlimited Mbits/sec
 sender:
   network:
-    destination: "192.168.1.102:3500"  # win11-IP
-    bind_address: "192.168.1.103" # linux-IP
+    # destination: "192.168.1.102:3500"  # win11-IP
+    # bind_address: "192.168.1.103" # linux-IP
+    destination: "192.168.100.2:3500"  # receiver IP
+    bind_address: "192.168.100.1" # sender IP
     bind_port: 0
     send_interval_micros: 0
 
   fec:
     type: "no_code"
-    encoding_symbol_length: 20000
-    max_number_of_parity_symbols: 100
-    maximum_source_block_length: 120
+    encoding_symbol_length: 16384
+    max_number_of_parity_symbols: 0
+    maximum_source_block_length: 50
     symbol_alignment: 8
     sub_blocks_length: 1
-
+ 
   flute:
     tsi: 1
     interleave_blocks: 16     # 更高块交错
@@ -24,29 +26,29 @@ sender:
     progress_interval: 200  # 更少日志
 
   files:
-    - path: "/home/Halllo/Projects/flute/examples/flute-sender/src/files_send/test_1024mb.bin"
+    - path: "/home/Halllo/Projects/flute/examples/flute-sender/files_send/test_1024mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
       
-  # 新增速率控制参数
-  max_rate_kbps: 100000
-  send_interval_micros: 0
+  # 新增速率控制参数 - 不限速测试
+  max_rate_kbps: 0        # 0 = 不限速
+  send_interval_micros: 0  # 0 = 最快发送  
 
 receiver:
   network:
-    bind_address: "192.168.1.102"  # win11-IP
+    bind_address: "192.168.100.2"  # veth-receiver IP
     port: 3500
 
   storage:
-    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
+    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/received_files"
     enable_md5_check: true
 
   logging:
     progress_interval: 100
 
   advanced:
-    buffer_size: 1048576     # 增大到1MB缓冲区
-    cleanup_interval: 2000   # 减少清理频率
-    log_interval: 500       # 减少日志频率
-    max_memory_mb: 2048      # 增大到2GB内存限制
+    buffer_size: 67108864    # 极限缓冲区：64MB (UDP最大理论缓冲区)
+    cleanup_interval: 50000  # 大幅减少清理频率，避免中断高速传输
+    log_interval: 10000     # 减少日志开销
+    max_memory_mb: 8192      # 8GB内存限制，容纳大量包缓存

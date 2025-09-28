@@ -24,7 +24,6 @@ impl FecShard for DataFecShard {
     fn esi(&self) -> u32 {
         self.index
     }
-
 }
 
 impl DataFecShard {

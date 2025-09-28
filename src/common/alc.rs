@@ -2,34 +2,31 @@ use super::{alccodec::AlcCodec, lct, oti, pkt::Pkt, Profile};
 use crate::tools::{self, error::FluteError, error::Result};
 use std::time::SystemTime;
 
-// ALC协议栈
-// [LCT头][FDT扩展][CENC扩展][FTI][FEC ID][Payload]
-
 /// ALC Packet
 #[derive(Debug)]
 pub struct AlcPkt<'a> {
     /// LCT header
-    pub lct: lct::LCTHeader, // LCT协议头
+    pub lct: lct::LCTHeader,
     /// OTI
-    pub oti: Option<oti::Oti>, // 传输参数（FEC编码类型等）
+    pub oti: Option<oti::Oti>,
     /// Transfer length
-    pub transfer_length: Option<u64>, // 传输数据总长度
+    pub transfer_length: Option<u64>,
     /// CENC
-    pub cenc: Option<lct::Cenc>, // 内容编码（如Gzip）
+    pub cenc: Option<lct::Cenc>,
     /// Server Time
-    pub server_time: Option<SystemTime>, // 服务器时间（用于同步）
+    pub server_time: Option<SystemTime>,
     /// Data
-    pub data: &'a [u8], // 原始数据引用
+    pub data: &'a [u8],
     /// offset to ALC header
-    pub data_alc_header_offset: usize, // ALC头偏移量
+    pub data_alc_header_offset: usize,
     /// Offset to payoad
-    pub data_payload_offset: usize, // 有效载荷偏移量
+    pub data_payload_offset: usize,
     /// FDT info
-    pub fdt_info: Option<ExtFDT>, // 文件描述表扩展信息
+    pub fdt_info: Option<ExtFDT>,
 }
 
 #[derive(Debug)]
-pub struct AlcPktCache { // 可缓存的数据包​
+pub struct AlcPktCache {
     pub lct: lct::LCTHeader,
     pub oti: Option<oti::Oti>,
     pub transfer_length: Option<u64>,
@@ -37,7 +34,7 @@ pub struct AlcPktCache { // 可缓存的数据包​
     pub server_time: Option<SystemTime>,
     pub data_alc_header_offset: usize,
     pub data_payload_offset: usize,
-    pub data: Vec<u8>, // 数据所有权版本
+    pub data: Vec<u8>,
     pub fdt_info: Option<ExtFDT>,
 }
 
@@ -124,8 +121,6 @@ pub fn new_alc_pkt(
 ) -> Vec<u8> {
     let mut data = Vec::new();
     log::debug!("Send ALC sbn={} esi={} toi={}", pkt.sbn, pkt.esi, pkt.toi);
-
-    // 1. 添加LCT头
     lct::push_lct_header(
         &mut data,
         0,
@@ -137,7 +132,6 @@ pub fn new_alc_pkt(
         false,
     );
 
-    // 2. 处理FDT（文件描述表）
     if pkt.toi == lct::TOI_FDT {
         debug_assert!(pkt.fdt_id.is_some());
 
@@ -149,7 +143,6 @@ pub fn new_alc_pkt(
         push_fdt(&mut data, version, pkt.fdt_id.unwrap())
     }
 
-    // 3. 添加内容编码标识
     // In case of FDT, we must push Cenc if Cenc is not null
     if (pkt.toi == lct::TOI_FDT && (pkt.cenc != lct::Cenc::Null)) || pkt.inband_cenc {
         push_cenc(&mut data, pkt.cenc as u8);
@@ -162,7 +155,6 @@ pub fn new_alc_pkt(
         };
     }
 
-    // 4. 添加FEC负载标识
     let codec = <dyn AlcCodec>::instance(oti.fec_encoding_id);
     if pkt.toi == lct::TOI_FDT || oti.inband_fti {
         codec.add_fti(&mut data, oti, pkt.transfer_length);
@@ -173,9 +165,7 @@ pub fn new_alc_pkt(
 }
 
 /// Parse a buffer to AlcPkt
-/// 解析ALC包
 pub fn parse_alc_pkt<'a>(data: &'a [u8]) -> Result<AlcPkt<'a>> {
-     // 1. 解析LCT头
     let lct_header = lct::parse_lct_header(data)?;
 
     let fec: oti::FECEncodingID = lct_header
@@ -183,7 +173,6 @@ pub fn parse_alc_pkt<'a>(data: &'a [u8]) -> Result<AlcPkt<'a>> {
         .try_into()
         .map_err(|_| FluteError::new(format!("Codepoint {} not supported", lct_header.cp)))?;
 
-    // 2. 获取FEC编码器实例
     let codec = <dyn AlcCodec>::instance(fec);
     let fec_payload_id_block_length = codec.fec_payload_id_block_length();
     if fec_payload_id_block_length + lct_header.len > data.len() {
@@ -198,12 +187,10 @@ pub fn parse_alc_pkt<'a>(data: &'a [u8]) -> Result<AlcPkt<'a>> {
         return Err(FluteError::new("Wrong size of ALC packet"));
     }
 
-     // 3. 解析FTI（文件传输信息）
     let fti = codec.get_fti(data, &lct_header)?;
     let data_alc_header_offset = lct_header.len;
     let data_payload_offset = fec_payload_id_block_length + lct_header.len;
 
-    // 4. 处理扩展字段（如CENC/FDT）
     let cenc = lct::get_ext(data, &lct_header, lct::Ext::Cenc as u8)?;
     let cenc = match cenc {
         Some(ext) => parse_cenc(ext).ok(),
@@ -219,7 +206,6 @@ pub fn parse_alc_pkt<'a>(data: &'a [u8]) -> Result<AlcPkt<'a>> {
         };
     }
 
-    // 5. 构建ALC包结构
     Ok(AlcPkt {
         lct: lct_header,
         oti: fti.as_ref().map(|fti| fti.0.clone()),

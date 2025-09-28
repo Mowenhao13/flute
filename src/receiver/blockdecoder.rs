@@ -11,10 +11,10 @@ use crate::tools::error::Result;
 
 #[derive(Debug)]
 pub struct BlockDecoder {
-    pub completed: bool,       // 是否已完成解码
-    pub initialized: bool,     // 是否已初始化
-    pub block_size: usize,     // 块大小(字节)
-    decoder: Option<Box<dyn FecDecoder>>, // 动态派发的FEC解码器
+    pub completed: bool,
+    pub initialized: bool,
+    pub block_size: usize,
+    decoder: Option<Box<dyn FecDecoder>>,
 }
 
 impl BlockDecoder {
@@ -29,16 +29,15 @@ impl BlockDecoder {
 
     pub fn init(
         &mut self,
-        oti: &oti::Oti,           // 传输对象信息
-        nb_source_symbols: u32,   // 源符号数量
-        block_size: usize,        // 块大小
-        sbn: u32                  // 源块编号
+        oti: &oti::Oti,
+        nb_source_symbols: u32,
+        block_size: usize,
+        sbn: u32,
     ) -> Result<()> {
         if self.initialized {
             return Ok(());
         }
 
-        // 根据不同的 FEC 编码类型初始化相应的解码器
         match oti.fec_encoding_id {
             oti::FECEncodingID::NoCode => {
                 let codec = nocode::NoCodeDecoder::new(nb_source_symbols as usize);
@@ -99,17 +98,11 @@ impl BlockDecoder {
         self.decoder.as_ref().unwrap().source_block()
     }
 
-    // 显式释放解码器资源，避免内存泄漏
     pub fn deallocate(&mut self) {
         self.decoder = None;
         self.block_size = 0;
     }
 
-    // 接收符号
-    // 处理流程：
-    // 1.从数据包中提取有效载荷
-    // 2.根据ESI(编码符号标识符)将符号送入解码器
-    // 3.检查是否已收集足够符号进行解码
     pub fn push(&mut self, pkt: &alc::AlcPkt, payload_id: &alc::PayloadID) {
         debug_assert!(self.initialized);
 

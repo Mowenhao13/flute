@@ -1,6 +1,6 @@
 use crate::common::oti::RaptorQSchemeSpecific;
 use crate::error::{FluteError, Result};
-use log::{info};
+
 use super::{FecDecoder, FecEncoder, FecShard};
 
 pub struct RaptorQEncoder {
@@ -29,28 +29,15 @@ impl RaptorQEncoder {
         encoding_symbol_length: usize,
         scheme: &RaptorQSchemeSpecific,
     ) -> Self {
-        // info!("Creating new RaptorQ encoder with parameters:");
-        // info!("- Source symbols: {}", nb_source_symbols);
-        // info!("- Parity symbols: {}", nb_parity_symbols);
-        // info!("- Symbol length: {} bytes", encoding_symbol_length);
-        // info!("- Scheme params: {:?}", scheme);
-
-        let total_data_length = (nb_source_symbols * encoding_symbol_length) as u64;
-        // info!("Calculated total data length: {} bytes", total_data_length);
-
-        let config = raptorq::ObjectTransmissionInformation::new(
-            total_data_length,
-            encoding_symbol_length as u16,
-            scheme.source_blocks_length,
-            scheme.sub_blocks_length,
-            scheme.symbol_alignment,
-        );
-
-        // info!("Final encoder configuration: {:?}", config);
-
         RaptorQEncoder {
             nb_parity_symbols,
-            config,
+            config: raptorq::ObjectTransmissionInformation::new(
+                (nb_source_symbols * encoding_symbol_length) as u64,
+                encoding_symbol_length as u16,
+                1,
+                scheme.sub_blocks_length,
+                scheme.symbol_alignment,
+            ),
         }
     }
 }
@@ -99,36 +86,16 @@ impl RaptorQDecoder {
         encoding_symbol_length: usize,
         scheme: &RaptorQSchemeSpecific,
     ) -> RaptorQDecoder {
-        // 记录关键参数
-        info!("Initializing RaptorQ decoder [SBN: {}]", sbn);
-        info!("- Source symbols: {}", nb_source_symbols);
-        info!("- Symbol length: {} bytes", encoding_symbol_length);
-        info!("- Scheme params: {:?}", scheme);
-
-        let total_length = (nb_source_symbols * encoding_symbol_length) as u64;
-        info!("Calculated total data length: {} bytes", total_length);
-
         let config = raptorq::ObjectTransmissionInformation::new(
-            total_length,
+            (nb_source_symbols * encoding_symbol_length) as u64,
             encoding_symbol_length as u16,
-            scheme.source_blocks_length,
+            1,
             scheme.sub_blocks_length,
             scheme.symbol_alignment,
         );
 
-        info!("OTI configuration details:");
-        info!("  transfer_length: {}", total_length);
-        info!("  symbol_size: {}", encoding_symbol_length);
-        info!("  source_blocks: {}", scheme.source_blocks_length);
-        info!("  sub_blocks: {}", scheme.sub_blocks_length);
-        info!("  alignment: {}", scheme.symbol_alignment);
-
         let block_length = nb_source_symbols as u64 * encoding_symbol_length as u64;
-        info!("Source block length: {} bytes", block_length);
-
         let decoder = raptorq::SourceBlockDecoder::new(sbn as u8, &config, block_length);
-        info!("Decoder instance created successfully");
-
         RaptorQDecoder {
             decoder,
             data: None,
@@ -198,5 +165,3 @@ mod tests {
         log::info!("NB source symbols={}", encoded_data.len());
     }
 }
-
-

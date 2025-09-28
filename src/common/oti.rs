@@ -10,8 +10,6 @@ use serde::Serialize;
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-
-// FEC 编码类型
 pub enum FECEncodingID {
     /// No FEC
     NoCode = 0,
@@ -63,7 +61,7 @@ pub struct ReedSolomonGF2MSchemeSpecific {
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RaptorQSchemeSpecific {
-    /// The number of source blocks (Z): 8-bit unsigned integer.
+    /// The number of source blocks (Z): 8-bit unsigned integer.  
     pub source_blocks_length: u8,
     /// The number of sub-blocks (N): 16-bit unsigned integer for Raptor.
     pub sub_blocks_length: u16,
@@ -185,21 +183,21 @@ pub enum SchemeSpecific {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Oti {
     /// Select the FEC for the object transmission
-    pub fec_encoding_id: FECEncodingID, // FEC 编码类型
+    pub fec_encoding_id: FECEncodingID,
     /// FEC Instance ID for Under-Specified spec (`FECEncodingID` > 0)
     /// Should be 0 for `FECEncodingID::ReedSolomonGF28SmallBlockSystematic`
-    pub fec_instance_id: u16, // FEC 实例ID
+    pub fec_instance_id: u16,
     /// Maximum number of encoding symbol per block
-    pub maximum_source_block_length: u32, // 最大源块长度(符号数)
+    pub maximum_source_block_length: u32,
     /// Size (in bytes) of an encoding symbol
-    pub encoding_symbol_length: u16, // 编码符号长度(字节)
+    pub encoding_symbol_length: u16,
     /// Maximum number of repairing symbols (FEC)
-    pub max_number_of_parity_symbols: u32, // 最大奇偶校验符号数
+    pub max_number_of_parity_symbols: u32,
     /// Optional, FEC scheme specific
-    pub scheme_specific: Option<SchemeSpecific>, // 方案特定参数
+    pub scheme_specific: Option<SchemeSpecific>,
     /// If `true`, FTI is added to every ALC/LCT packets
     /// If `false`, FTI is only available inside the FDT
-    pub inband_fti: bool, // 是否在带内传输FTI
+    pub inband_fti: bool,
 }
 
 impl Default for Oti {
@@ -224,10 +222,8 @@ impl Oti {
     ///   It is the payload of an ALC/LCT packet. The ALC/LCT header plus the encoding symbol length should be less than the maximum transmission unit (MTU).
     ///
     /// * `maximum_source_block_length`: A `u16` value representing the maximum length of a source block in bytes.
-    /// A source block is a contiguous portion of the original data that is encoded using the FEC Scheme. 
-    
-    /// 创建不同 FEC 类型的 OTI 
-    pub fn new_no_code(encoding_symbol_length: u16, maximum_source_block_length: u32) -> Oti {
+    /// A source block is a contiguous portion of the original data that is encoded using the FEC Scheme.  
+    pub fn new_no_code(encoding_symbol_length: u16, maximum_source_block_length: u16) -> Oti {
         Oti {
             fec_encoding_id: FECEncodingID::NoCode,
             fec_instance_id: 0,
@@ -270,7 +266,7 @@ impl Oti {
     ///
     pub fn new_reed_solomon_rs28(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u32,
+        maximum_source_block_length: u8,
         max_number_of_parity_symbols: u8,
     ) -> Result<Oti> {
         let encoding_block_length: u32 =
@@ -321,7 +317,7 @@ impl Oti {
     ///
     pub fn new_reed_solomon_rs28_under_specified(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u32,
+        maximum_source_block_length: u16,
         max_number_of_parity_symbols: u16,
     ) -> Result<Oti> {
         let encoding_block_length: usize =
@@ -377,7 +373,7 @@ impl Oti {
     ///
     pub fn new_raptorq(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u32,
+        maximum_source_block_length: u16,
         max_number_of_parity_symbols: u16,
         sub_blocks_length: u16,
         symbol_alignment: u8,
@@ -395,8 +391,7 @@ impl Oti {
             encoding_symbol_length,
             max_number_of_parity_symbols: max_number_of_parity_symbols as u32,
             scheme_specific: Some(SchemeSpecific::RaptorQ(RaptorQSchemeSpecific {
-                // symbol_count: Encoder::source_blocks && Decoder::source_blocks
-                source_blocks_length:1, // The number of source_blocks
+                source_blocks_length: 0,
                 sub_blocks_length,
                 symbol_alignment,
             })),
@@ -440,7 +435,7 @@ impl Oti {
     ///
     pub fn new_raptor(
         encoding_symbol_length: u16,
-        maximum_source_block_length: u32,
+        maximum_source_block_length: u16,
         max_number_of_parity_symbols: u16,
         sub_blocks_length: u8,
         symbol_alignment: u8,
@@ -474,12 +469,12 @@ impl Oti {
     /// However, the returned value is limited to a maximum of 48 bits, which is the maximum transfer length supported by the FLUTE protocol.
     ///
     pub fn max_transfer_length(&self) -> usize {
-        let transfer_length: usize = match self.fec_encoding_id { // 最大源块数
+        let transfer_length: usize = match self.fec_encoding_id {
             FECEncodingID::NoCode => 0xFFFFFFFFFFFF, // 48 bits max
             FECEncodingID::ReedSolomonGF2M => 0xFFFFFFFFFFFF, // 48 bits max
             FECEncodingID::ReedSolomonGF28 => 0xFFFFFFFFFFFF, // 48 bits max
             FECEncodingID::ReedSolomonGF28UnderSpecified => 0xFFFFFFFFFFFF, // 48 bits max
-            FECEncodingID::RaptorQ => 0xFFFFFFFFFFF, // 40 bits max
+            FECEncodingID::RaptorQ => 0xFFFFFFFFFFFF, // 48 bits max
             FECEncodingID::Raptor => 0xFFFFFFFFFFFF, // 48 bits max
         };
 
@@ -520,7 +515,7 @@ impl Oti {
     }
 
     fn scheme_specific_info(&self) -> Option<String> {
-        match self.fec_encoding_id { // 根据FEC类型限制最大长度 
+        match self.fec_encoding_id {
             FECEncodingID::NoCode => None,
             FECEncodingID::ReedSolomonGF2M => match self.scheme_specific.as_ref() {
                 Some(SchemeSpecific::ReedSolomon(scheme)) => Some(scheme.scheme_specific()),

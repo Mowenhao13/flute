@@ -125,7 +125,6 @@ where
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FdtInstance {
-    // XML 命名空间定义
     #[serde(rename = "@xmlns", serialize_with = "xmlns")]
     pub xmlns: Option<String>,
     #[serde(rename = "@xmlns:xsi", serialize_with = "xmlns_xsi")]
@@ -150,18 +149,15 @@ pub struct FdtInstance {
     //  UTF-8 decimal representation of a 32-bit unsigned integer.  The
     //  value of this integer represents the 32 most significant bits of a
     //  64-bit Network Time Protocol (NTP) [RFC5905] time value
-
-    // 核心属性
     #[serde(rename = "@Expires")]
-    pub expires: String, // 过期时间（NTP 格式）
+    pub expires: String,
     #[serde(rename = "@Complete", skip_serializing_if = "Option::is_none")]
-    pub complete: Option<bool>, // 是否完整
+    pub complete: Option<bool>,
     #[serde(rename = "@Content-Type", skip_serializing_if = "Option::is_none")]
-    pub content_type: Option<String>, // 内容类型
+    pub content_type: Option<String>,
     #[serde(rename = "@Content-Encoding", skip_serializing_if = "Option::is_none")]
-    pub content_encoding: Option<String>, // 内容编码
+    pub content_encoding: Option<String>,
 
-    // FEC 参数
     #[serde(
         rename = "@FEC-OTI-FEC-Encoding-ID",
         skip_serializing_if = "Option::is_none"
@@ -202,11 +198,9 @@ pub struct FdtInstance {
     #[serde(alias = "@FullFDT")]
     pub full_fdt: Option<bool>,
 
-    // 文件列表
     #[serde(rename = "File", skip_serializing_if = "Option::is_none")]
     pub file: Option<Vec<File>>,
 
-    // 其他可选字段
     #[serde(rename = "sv:schemaVersion", skip_serializing_if = "Option::is_none")]
     #[serde(alias = "schemaVersion")]
     pub schema_version: Option<u32>,
@@ -282,10 +276,7 @@ pub struct CacheControl {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-
-// File结构体
 pub struct File {
-    // 缓存控制
     #[serde(
         rename = "mbms2007:Cache-Control",
         skip_serializing_if = "Option::is_none"
@@ -336,29 +327,25 @@ pub struct File {
         skip_serializing_if = "Option::is_none"
     )]
     pub mbms_session_identity: Option<Vec<u8>>,
-    // 文件标识
+
     #[serde(rename = "@Content-Location")]
-    pub content_location: String, // 内容位置URI
+    pub content_location: String,
     #[serde(rename = "@TOI")]
     pub toi: String,
     #[serde(rename = "@Content-Length", skip_serializing_if = "Option::is_none")]
-    pub content_length: Option<u64>, // 传输长度
+    pub content_length: Option<u64>,
     #[serde(rename = "@Transfer-Length", skip_serializing_if = "Option::is_none")]
     pub transfer_length: Option<u64>,
-
-    // 内容类型
     #[serde(rename = "@Content-Type", skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
     #[serde(rename = "@Content-Encoding", skip_serializing_if = "Option::is_none")]
     pub content_encoding: Option<String>,
     #[serde(rename = "@Content-MD5", skip_serializing_if = "Option::is_none")]
-    pub content_md5: Option<String>, // MD5校验和
+    pub content_md5: Option<String>,
     #[serde(
         rename = "@FEC-OTI-FEC-Encoding-ID",
         skip_serializing_if = "Option::is_none"
     )]
-
-    // FEC 参数
     pub fec_oti_fec_encoding_id: Option<u8>,
     #[serde(
         rename = "@FEC-OTI-FEC-Instance-ID",
@@ -386,7 +373,6 @@ pub struct File {
     )]
     pub fec_oti_scheme_specific_info: Option<String>, // Base64
 
-    // 其他可选字段
     #[serde(
         rename = "@mbms2009:Decryption-KEY-URI",
         skip_serializing_if = "Option::is_none"
@@ -466,7 +452,6 @@ impl FdtInstance {
         span
     }
 
-    // 使用 quick_xml库从字节缓冲区解析 XML 格式的 FDT 数据
     pub fn parse(buffer: &[u8]) -> Result<FdtInstance> {
         #[cfg(feature = "opentelemetry")]
         let _span = Self::op_start(buffer);
@@ -505,9 +490,7 @@ impl FdtInstance {
         self.get_oti()
     }
 
-    // 获取文件传输参数 (OTI)
     pub fn get_oti(&self) -> Option<oti::Oti> {
-        // 检查必需的 FEC 参数是否存在
         if self.fec_oti_fec_encoding_id.is_none()
             || self.fec_oti_maximum_source_block_length.is_none()
             || self.fec_oti_encoding_symbol_length.is_none()
@@ -515,11 +498,9 @@ impl FdtInstance {
             return None;
         }
 
-        // 获取 FEC 编码类型
         let fec_encoding_id: oti::FECEncodingID =
             self.fec_oti_fec_encoding_id.unwrap().try_into().ok()?;
 
-        // 根据 FEC 类型解析特定的方案信息
         let scheme_specific = match fec_encoding_id {
             oti::FECEncodingID::ReedSolomonGF2M => {
                 reed_solomon_scheme_specific(&self.fec_oti_scheme_specific_info).unwrap_or(None)
@@ -533,7 +514,6 @@ impl FdtInstance {
             _ => None,
         };
 
-        // 计算最大奇偶校验符号数
         let fec_oti_max_number_of_encoding_symbols = self
             .fec_oti_max_number_of_encoding_symbols
             .unwrap_or(self.fec_oti_maximum_source_block_length.unwrap());
@@ -553,7 +533,6 @@ impl FdtInstance {
 }
 
 impl File {
-    // 文件缓存控制
     pub fn get_object_cache_control(
         &self,
         fdt_expiration_time: Option<SystemTime>,
@@ -563,7 +542,6 @@ impl File {
                 CacheControlChoice::NoCache(_) => Some(ObjectCacheControl::NoCache),
                 CacheControlChoice::MaxStale(_) => Some(ObjectCacheControl::MaxStale),
                 CacheControlChoice::Expires(time) => {
-                    // 将 NTP 时间转换为系统时间
                     match tools::ntp_to_system_time((time as u64) << 32) {
                         Ok(res) => Some(ObjectCacheControl::ExpiresAt(res)),
                         Err(_) => {

@@ -6,33 +6,25 @@ use crate::{receiver::writer::ObjectMetadata, tools};
 use crate::{receiver::writer::ObjectWriter, tools::error::Result};
 use std::{cell::RefCell, rc::Rc, time::SystemTime};
 
-// 核心功能
-// 1.​接收 FDT 数据包​​：处理 ALC/LCT 协议中的 FDT 数据包
-// 2.解析 FDT XML​​：将接收到的 FDT 数据解析为结构化信息
-// 3.状态管理​​：跟踪 FDT 接收状态（接收中/完成/错误/过期）
-// 4.时间同步​​：处理发送方和接收方的时间同步问题
-// 5.过期检查​​：验证 FDT 是否已过期
-
 #[derive(Clone, Copy, PartialEq, Debug)]
-// FDT 状态枚举
 pub enum FDTState {
-    Receiving,  // 接收中
-    Complete,   // 接收完成
-    Error,      // 接收错误
-    Expired,    // 已过期
+    Receiving,
+    Complete,
+    Error,
+    Expired,
 }
 
 pub struct FdtReceiver {
-    pub fdt_id: u32,                          // FDT 实例ID
-    obj: Option<Box<objectreceiver::ObjectReceiver>>, // 底层对象接收器
-    inner: Rc<RefCell<FdtWriterInner>>,       // 内部状态(共享所有权)
-    fdt_instance: Option<FdtInstance>,       // 解析后的FDT实例
-    sender_current_time_offset: Option<std::time::Duration>, // 时间偏移量
-    sender_current_time_late: bool,           // 发送方时间是否滞后
-    pub ext_time: Option<std::time::SystemTime>, // 扩展时间
-    pub reception_start_time: SystemTime,     // 接收开始时间
-    enable_expired_check: bool,               // 是否启用过期检查
-    meta: Option<ObjectMetadata>,             // 对象元数据
+    pub fdt_id: u32,
+    obj: Option<Box<objectreceiver::ObjectReceiver>>,
+    inner: Rc<RefCell<FdtWriterInner>>,
+    fdt_instance: Option<FdtInstance>,
+    sender_current_time_offset: Option<std::time::Duration>,
+    sender_current_time_late: bool,
+    pub ext_time: Option<std::time::SystemTime>,
+    pub reception_start_time: SystemTime,
+    enable_expired_check: bool,
+    meta: Option<ObjectMetadata>,
 }
 
 impl std::fmt::Debug for FdtReceiver {
@@ -62,25 +54,20 @@ struct FdtWriterBuilder {
 }
 
 #[derive(Debug)]
-// 内部写入器结构
 struct FdtWriterInner {
-    data: Vec<u8>,            // 原始FDT数据
-    fdt: Option<FdtInstance>,  // 解析后的FDT实例
-    expires: Option<SystemTime>, // 过期时间
-    state: FDTState,          // 当前状态
+    data: Vec<u8>,
+    fdt: Option<FdtInstance>,
+    expires: Option<SystemTime>,
+    state: FDTState,
 }
 
-// 初始化步骤：
-// 1.创建内部状态容器 FdtWriterInner
-// 2.创建 FDT 写入器构建器 FdtWriterBuilder
-// 3.初始化底层对象接收器 ObjectReceiver
 impl FdtReceiver {
     pub fn new(
-        endpoint: &UDPEndpoint,  // 网络端点
-        tsi: u64,                // 传输会话ID
-        fdt_id: u32,             // FDT实例ID
-        enable_expired_check: bool, // 是否启用过期检查
-        now: SystemTime          // 当前时间
+        endpoint: &UDPEndpoint,
+        tsi: u64,
+        fdt_id: u32,
+        enable_expired_check: bool,
+        now: SystemTime,
     ) -> FdtReceiver {
         let inner = Rc::new(RefCell::new(FdtWriterInner {
             data: Vec::new(),
@@ -113,12 +100,6 @@ impl FdtReceiver {
         }
     }
 
-    // 接收数据包
-    // 处理流程：
-    // 1.提取发送方当前时间（用于时间同步）
-    // 2.计算时间偏移量
-    // 3.将数据包传递给底层对象接收器
-    // 4.根据接收状态更新 FDT 状态
     pub fn push(&mut self, pkt: &alc::AlcPkt, now: std::time::SystemTime) {
         if let Ok(Some(res)) = alc::get_sender_current_time(pkt) {
             self.ext_time = Some(res);
@@ -181,7 +162,6 @@ impl FdtReceiver {
         self.meta.as_ref()
     }
 
-    // 过期检查
     pub fn update_expired_state(&self, now: SystemTime) {
         if self.state() != FDTState::Complete {
             return;
