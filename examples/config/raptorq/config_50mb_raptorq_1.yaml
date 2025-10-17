@@ -1,0 +1,54 @@
+# config_50mb_raptorq_1.yaml
+# FLUTE 50MB文件传输专用配置 (raptorq)
+sender:
+  network:
+    destination: "192.168.1.103:3500"
+    bind_address: "192.168.1.102"
+    bind_port: 0
+    send_interval_micros: 1000
+    # 单向传输配置
+    destination_mac: "10:7c:61:10:a5:47"  # 接收端实际MAC地址
+    interface: "以太网"
+
+  fec:
+    type: "raptorq"
+    encoding_symbol_length: 2800
+    max_number_of_parity_symbols: 4
+    maximum_source_block_length: 120
+    symbol_alignment: 4
+    sub_blocks_length: 1
+
+  flute:
+    tsi: 1
+    interleave_blocks: 4
+
+  logging:
+    progress_interval: 100
+
+  files:
+    - path: "../../../test_files/test_50mb.bin"
+      content_type: "application/octet-stream"
+      priority: 0
+      version: 1
+
+receiver:
+  network:
+    bind_address: "0.0.0.0"  # 监听所有接口
+    port: 3500
+    # 单向传输配置
+    sender_mac: "f4:4d:30:16:44:b6"  # 发送端MAC地址
+    sender_ip: "192.168.1.102"  # 发送端IP地址
+    interface: "enp3s0"
+
+  storage:
+    destination_dir: "../../../flute_recv"
+    enable_md5_check: true
+
+  logging:
+    progress_interval: 10
+
+  advanced:
+    buffer_size: 8388608
+    cleanup_interval: 100
+    log_interval: 50
+    max_memory_mb: 256

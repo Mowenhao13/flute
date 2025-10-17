@@ -7,6 +7,7 @@ use flute::{
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::{Duration, Instant};
 use std::{net::UdpSocket, time::SystemTime};
 
@@ -24,7 +25,6 @@ struct SenderConfigSection {
     files: Vec<FileConfig>,
     // New param
     max_rate_kbps: Option<u32>,        // 最大速率限制 (kbps)
-    send_interval_micros: Option<u64>, // 发送间隔微秒
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,6 +33,9 @@ struct SenderNetworkConfig {
     bind_address: String,
     bind_port: u16,
     send_interval_micros: u64,
+    // 单向传输配置
+    destination_mac: Option<String>,
+    interface: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +66,74 @@ struct FileConfig {
     content_type: String,
     priority: u8,
     version: u32,
+}
+
+/// 配置静态ARP表，用于单向传输
+fn configure_static_arp(ip: &str, mac: &str, interface: &str) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("🔧 配置Windows11单向传输静态ARP: {} -> {} 在接口 {}", ip, mac, interface);
+
+    // Windows系统使用netsh命令指定接口配置静态ARP
+
+    // 1. 先删除可能存在的旧ARP条目（确保干净的状态）
+    log::info!("删除指定接口 '{}' 上的旧ARP条目...", interface);
+    let _ = Command::new("netsh")
+        .args(&["interface", "ipv4", "delete", "neighbors", interface, ip])
+        .output();
+    
+    // 2. 使用netsh命令在指定接口上添加永久静态ARP条目
+    log::info!("在指定接口 '{}' 上添加静态ARP条目: {} -> {}", interface, ip, mac);
+    let output = Command::new("netsh")
+        .args(&["interface", "ipv4", "add", "neighbors", interface, ip, mac])
+        .output()?;
+
+    // 检查命令执行结果
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    
+    if !output.status.success() {
+        // 如果是"对象已存在"错误，视为成功
+        if stderr.contains("对象已存在") || stdout.contains("对象已存在") {
+            log::info!("ℹ️  ARP条目已存在，跳过添加步骤");
+        } else {
+            log::error!("❌ netsh命令执行失败:");
+            log::error!("   退出码: {}", output.status);
+            log::error!("   标准输出: {}", stdout);
+            log::error!("   错误输出: {}", stderr);
+            return Err(format!("配置Windows静态ARP失败: 退出码={}, stderr={}", output.status, stderr).into());
+        }
+    } else {
+        log::info!("✅ netsh命令执行成功");
+    }
+
+    // 3. Windows单向传输配置说明
+    log::info!("🚫 Windows11单向传输配置提示:");
+    log::info!("   1. 已配置静态ARP表项到指定接口");
+    log::info!("   2. Windows防火墙可能需要手动配置");
+    log::info!("   3. 建议在Windows防火墙中允许FLUTE程序");
+    log::info!("   4. 请确保以管理员权限运行程序");
+
+    // 4. 验证静态ARP条目在正确接口上
+    log::info!("验证指定接口 '{}' 上的ARP表项...", interface);
+    let verify = Command::new("netsh")
+        .args(&["interface", "ipv4", "show", "neighbors", interface])
+        .output()?;
+
+    let neighbor_output = String::from_utf8_lossy(&verify.stdout);
+    if neighbor_output.contains(ip) && neighbor_output.contains(mac) {
+        log::info!("✅ Windows静态ARP配置成功: {} -> {} (接口: {})", ip, mac, interface);
+        // 查找并显示具体的邻居条目
+        for line in neighbor_output.lines() {
+            if line.contains(ip) {
+                log::info!("📋 邻居表项: {}", line.trim());
+                break;
+            }
+        }
+    } else {
+        log::warn!("⚠️  ARP验证失败，请检查配置");
+        log::debug!("邻居表内容:\n{}", neighbor_output);
+    }
+
+    Ok(())
 }
 
 fn load_config(config_path: &Path) -> Result<AppConfig, Box<dyn std::error::Error>> {
@@ -198,26 +269,40 @@ fn main() {
     env_logger::builder().try_init().ok();
 
     // 使用变量选择配置文件
-    let config_choice = 2;  // 修改这个数字来选择不同的配置文件 (1-12) - config_1024mb_no_code_1.yaml
+    let config_choice = 19;  // 修改这个数字来选择不同的配置文件 (1-12) - config_1024mb_no_code_1.yaml
 
-    // 配置文件列表，使用绝对路径
-    // 1-6: 虚拟网卡测试配置 (veth-sender <-> veth-receiver)
-    // 7-12: 硬件测试配置 (linux 192.168.1.103 <-> win11 192.168.1.102)
+    
     let config_paths = vec![
         // 虚拟网卡测试配置 (veth: 192.168.100.1 -> 192.168.100.2)
-        "/home/Halllo/Projects/flute/examples/config/config_1mb_no_code.yaml",                            // 1
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_no_code.yaml",                        // 2
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_raptor.yaml",                         // 3
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq.yaml",                        // 4
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28.yaml",              // 5
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28_under_specified.yaml", // 6
+        "../../config/config_1mb_no_code.yaml", // 1
+        "../../config/config_1024mb_no_code.yaml",  // 2
+        "../../config/config_1024mb_raptor.yaml",   // 3
+        "../../config/config_1024mb_raptorq.yaml", // 4
+        "../../config/config_1024mb_reed_solomon_rs28.yaml",  // 5
+        "../../config/config_1024mb_reed_solomon_rs28_under_specified.yaml", // 6
+        
         // 硬件测试配置 (硬件: 192.168.1.103 -> 192.168.1.102) 
-        "/home/Halllo/Projects/flute/examples/config/config_1mb_no_code_1.yaml",                         // 7
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_no_code_1.yaml",                      // 8
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_raptor_1.yaml",                       // 9
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_raptorq_1.yaml",                      // 10
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28_1.yaml",            // 11
-        "/home/Halllo/Projects/flute/examples/config/config_1024mb_reed_solomon_rs28_under_specified_1.yaml", // 12
+        // No-code
+        "../../config/no_code/config_1mb_no_code_1.yaml", // 7
+        "../../config/no_code/config_50mb_no_code_1.yaml",  // 8
+        "../../config/no_code/config_100mb_no_code_1.yaml",  // 9
+        "../../config/no_code/config_200mb_no_code_1.yaml",  // 10
+        "../../config/no_code/config_300mb_no_code_1.yaml", // 11
+        "../../config/no_code/config_500mb_no_code_1.yaml", // 12
+        "../../config/no_code/config_1024mb_no_code_1.yaml", // 13
+        // RaptorQ 
+        "../../config/raptorq/config_1mb_raptorq_1.yaml", // 14
+        "../../config/raptorq/config_50mb_raptorq_1.yaml",  // 15
+        "../../config/raptorq/config_100mb_raptorq_1.yaml",  // 16
+        "../../config/raptorq/config_200mb_raptorq_1.yaml", // 17 
+        "../../config/raptorq/config_300mb_raptorq_1.yaml", // 18 
+        "../../config/raptorq/config_500mb_raptorq_1.yaml", // 19
+        "../../config/raptorq/config_1024mb_raptorq_1.yaml", // 20 
+        // Raptor 
+        "../../config/raptor/config_1024mb_raptor_1.yaml", // 21
+        // Reed-Solomon
+        "../../config/reed-solomon/config_1024mb_reed_solomon_rs28_1.yaml", // 22
+        "../../config/reed-solomon/config_1024mb_reed_solomon_rs28_under_specified_1.yaml", // 23
     ];
 
     if config_choice < 1 || config_choice > config_paths.len() {
@@ -245,6 +330,56 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    // 🔧 配置静态ARP（单向传输关键步骤）
+    // 检查是否启用静态ARP配置（便于本地虚拟网卡测试时跳过）
+    let enable_static_arp = std::env::var("ENABLE_STATIC_ARP").unwrap_or_else(|_| "true".to_string()).to_lowercase() == "true";
+    let manual_arp = std::env::var("MANUAL_ARP_CONFIG").is_ok();
+    let skip_arp = std::env::var("SKIP_ARP_CONFIG").is_ok();
+    let disable_arp = std::env::var("DISABLE_ARP_REQUESTS").is_ok();
+
+    if !enable_static_arp {
+        log::info!("⏭️  跳过静态ARP配置 (ENABLE_STATIC_ARP=false)");
+        log::info!("💡 适用于本地虚拟网卡测试环境");
+    } else if manual_arp {
+        log::info!("🔧 使用手动ARP配置模式 (MANUAL_ARP_CONFIG环境变量已设置)");
+        log::info!("💡 请确保已手动执行以下命令:");
+        log::info!("   netsh interface ipv4 delete neighbors \"以太网\" 192.168.1.103");
+        log::info!("   netsh interface ipv4 add neighbors \"以太网\" 192.168.1.103 10-7c-61-10-a5-47");
+        log::info!("💡 验证命令: netsh interface ipv4 show neighbors \"以太网\" | findstr \"192.168.1.103\"");
+        log::info!("✅ 程序将完全跳过ARP配置步骤");
+    } else if let (Some(dest_mac), Some(interface)) = (
+        config.sender.network.destination_mac.as_ref(),
+        config.sender.network.interface.as_ref()
+    ) {
+        let dest_ip = config.sender.network.destination.split(':').next().unwrap();
+
+        if disable_arp {
+            log::info!("🚫 ARP请求已禁用，进入纯单向传输模式");
+            log::info!("💡 请确保已手动配置静态ARP: {} -> {}", dest_ip, dest_mac);
+            log::info!("💡 验证命令: netsh interface ipv4 show neighbors \"{}\" | findstr \"{}\"", interface, dest_ip);
+        } else if skip_arp {
+            log::info!("⏩ 跳过自动ARP配置 (SKIP_ARP_CONFIG环境变量已设置)");
+            log::info!("💡 请确保已手动配置静态ARP: {} -> {}", dest_ip, dest_mac);
+            log::info!("💡 验证命令: netsh interface ipv4 show neighbors \"{}\" | findstr \"{}\"", interface, dest_ip);
+        } else {
+            log::info!("🚀 检测到单向传输配置，正在配置静态ARP...");
+            if let Err(e) = configure_static_arp(dest_ip, dest_mac, interface) {
+                log::error!("❌ 配置发送端ARP失败: {}", e);
+                if cfg!(target_os = "windows") {
+                    log::error!("提示: 请以管理员身份运行程序");
+                    log::error!("💡 解决方法: 右键点击 PowerShell/命令提示符 → '以管理员身份运行'");
+                    log::error!("💡 或者手动配置ARP后设置环境变量: MANUAL_ARP_CONFIG=1");
+                } else {
+                    log::error!("提示: 确保以sudo权限运行程序");
+                }
+                std::process::exit(1);
+            }
+            log::info!("✅ 静态ARP配置成功！");
+        }
+    } else {
+        log::info!("ℹ️  未检测到单向传输配置，跳过ARP设置");
+    }
 
     // 计算所有文件的总原始大小
     let total_file_size: usize = config.sender.files.iter()
@@ -345,11 +480,8 @@ fn main() {
         log::info!("  - 最大速率限制: 无限制");
     }
     
-    if let Some(interval) = config.sender.send_interval_micros {
-        log::info!("  - 发送间隔: {} 微秒", interval);
-    } else {
-        log::info!("  - 发送间隔: 默认值");
-    }
+    let interval = config.sender.network.send_interval_micros;
+    log::info!("  - 发送间隔: {} 微秒", interval);
 
     // 使用配置文件中的FEC类型，但参数仍使用硬编码进行测试
     log::info!("配置文件FEC类型: {}", config.sender.fec.fec_type);
@@ -468,6 +600,7 @@ fn main() {
     let mut total_bytes_sent: u64 = 0;
     let mut sent_packets: u64 = 0;
 
+    let send_interval_micros = config.sender.network.send_interval_micros;
     let max_rate_kbps = config.sender.max_rate_kbps.unwrap_or(0);
     let bytes_per_sec = if max_rate_kbps > 0 {
         max_rate_kbps as f64 * 1000.0 / 8.0 // kbps -> Bps
@@ -475,8 +608,12 @@ fn main() {
         f64::INFINITY // 不限速
     };
 
-    log::info!("Rate control: max_rate_kbps = {} ({} B/s)",
+    if send_interval_micros > 0 {
+        log::info!("Rate control: send_interval_micros = {} ({} us per packet)", send_interval_micros, send_interval_micros);
+    } else {
+        log::info!("Rate control: max_rate_kbps = {} ({} B/s)",
            max_rate_kbps, if bytes_per_sec.is_finite() { bytes_per_sec as u64 } else { 0 });
+    }
 
     // 用“下一次应发送时间”做节拍
     let mut next_send_at = Instant::now();
@@ -484,25 +621,19 @@ fn main() {
     // 日志辅助
     let mut last_log_time = Instant::now();
     let mut bytes_since_log: u64 = 0;
+    let mut packets_since_log: u64 = 0;
 
     while let Some(pkt) = sender.read(SystemTime::now()) {
-        // 仅在限速开启时进行节拍控制
-        if bytes_per_sec.is_finite() {
+        if send_interval_micros > 0 {
+            std::thread::sleep(Duration::from_micros(send_interval_micros));
+        } else if bytes_per_sec.is_finite() {
             let pkt_len = pkt.len() as f64;
-
-            // 这一个包在目标速率下“应当占用”的时间片
             let interval = Duration::from_secs_f64(pkt_len / bytes_per_sec);
-
-            // 若当前时间尚未到达下一次发送时刻，则等待
             let now = Instant::now();
             if now < next_send_at {
                 std::thread::sleep(next_send_at - now);
             }
-
-            // 发送成功后，推进下一次发送时刻
             next_send_at += interval;
-
-            // 若由于调度/日志等原因漂移过大，进行重校准，避免越走越偏
             let drift = Instant::now().saturating_duration_since(next_send_at);
             if drift > Duration::from_millis(200) {
                 next_send_at = Instant::now() + interval;
@@ -513,6 +644,7 @@ fn main() {
             Ok(bytes_sent) => {
                 total_bytes_sent += bytes_sent as u64;
                 bytes_since_log += bytes_sent as u64;
+                packets_since_log += 1;
                 sent_packets += 1;
 
                 // 按进度间隔打印统计
@@ -523,17 +655,20 @@ fn main() {
                         let inst_mbps = (bytes_since_log as f64 * 8.0) / dt / 1_000_000.0;
                         let avg_mbps = (total_bytes_sent as f64 * 8.0)
                             / now.duration_since(start_time).as_secs_f64() / 1_000_000.0;
+                        let pps = packets_since_log as f64 / dt;
 
                         log::info!(
-                        "Progress: {} pkts, {} MB | Instant: {:.2} Mbps | Avg: {:.2} Mbps",
+                        "Progress: {} pkts, {} MB | Instant: {:.2} Mbps | Avg: {:.2} Mbps | PPS: {:.0}",
                         sent_packets,
                         total_bytes_sent / (1024 * 1024),
                         inst_mbps,
-                        avg_mbps
+                        avg_mbps,
+                        pps
                     );
                     }
                     last_log_time = now;
                     bytes_since_log = 0;
+                    packets_since_log = 0;
                 }
             }
             Err(e) => {
@@ -573,4 +708,3 @@ fn main() {
         sent_packets
     );
 }
-

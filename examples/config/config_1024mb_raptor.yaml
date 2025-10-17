@@ -26,7 +26,7 @@ sender:
     progress_interval: 100  # 更少日志
 
   files:
-    - path: "/home/Halllo/Projects/flute/examples/flute-sender/files_send/test_1024mb.bin"
+    - path: "../../../test_files/test_1024mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
@@ -41,7 +41,7 @@ receiver:
     port: 3500
 
   storage:
-    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/received_files"
+    destination_dir: "../../../flute_recv"
     enable_md5_check: true
 
   logging:

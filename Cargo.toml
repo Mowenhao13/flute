@@ -17,6 +17,15 @@ name = "flute"
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
+# Binary targets for sender and receiver
+[[bin]]
+name = "flute-sender"
+path = "examples/flute-sender/src/main.rs"
+
+[[bin]]
+name = "flute-receiver"
+path = "examples/flute-receiver/src/main.rs"
+
 [dependencies]
 log  = "0.4"
 chrono = "0.4"
@@ -37,6 +46,12 @@ opentelemetry = { version = "0.30", optional = true  }
 opentelemetry-semantic-conventions = { version = "0.30" , optional = true }
 rand = "0.9"
 utoipa = { version = "5", optional = true }
+# Dependencies for receiver and sender binaries
+env_logger = "0.11"
+libc = "0.2"
+pnet = "0.34"
+serde_yaml = "0.9.34"
+tokio = "1.47.1"
 
 [dev-dependencies]
 env_logger = "0.11"

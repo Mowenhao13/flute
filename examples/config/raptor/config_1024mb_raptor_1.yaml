@@ -3,10 +3,13 @@
 # Rate under: unlimited Mbits/sec
 sender:
   network:
-    destination: "192.168.1.102:3500"  # win11-IP (接收端)
-    bind_address: "192.168.1.103" # linux-IP (发送端)
+    destination: "192.168.1.103:3500"
+    bind_address: "192.168.1.102"
     bind_port: 0
-    send_interval_micros: 1
+    send_interval_micros: 1000
+    # 单向传输配置
+    destination_mac: "10:7c:61:10:a5:47"  # 接收端实际MAC地址
+    interface: "以太网"
 
   fec:
     type: "raptor"
@@ -24,7 +27,7 @@ sender:
     progress_interval: 100  # 更少日志
 
   files:
-    - path: "/home/Halllo/Projects/flute/examples/flute-sender/files_send/test_1024mb.bin"
+    - path: "../../../test_files/test_1024mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
@@ -35,11 +38,15 @@ sender:
 
 receiver:
   network:
-    bind_address: "192.168.1.102"  # win11-IP (接收端)
+    bind_address: "0.0.0.0"  # 监听所有接口
     port: 3500
+    # 单向传输配置
+    sender_mac: "f4:4d:30:16:44:b6"  # 发送端MAC地址
+    sender_ip: "192.168.1.102"  # 发送端IP地址
+    interface: "enp3s0"
 
   storage:
-    destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
+    destination_dir: "../../../flute_recv"
     enable_md5_check: true
 
   logging:

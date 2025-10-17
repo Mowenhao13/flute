@@ -23,7 +23,7 @@ sender:
     progress_interval: 500
 
   files:
-    - path: "/home/Halllo/Projects/flute/examples/flute-sender/files_send/test_1mb.bin"
+    - path: "../../../test_files/test_1mb.bin"
       content_type: "application/octet-stream"
       priority: 0
       version: 1
@@ -35,7 +35,7 @@ receiver:
 
   storage:
     # destination_dir: "C:\\Users\\Administrator\\Desktop\\flute\\flute_recv"
-    destination_dir: "/home/Halllo/Projects/flute/examples/flute-receiver/received_files"
+    destination_dir: "../../../flute_recv"
     enable_md5_check: true
 
   logging:
